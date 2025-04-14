@@ -1,12 +1,15 @@
-from slime_os.drivers.hid.pico_calc import PicoCalcKeyboard 
-from slime_os.drivers.hid.slime_deck import SlimeDeckKeyboard
+from slime_os.device_config import my_device
 
 class Keyboard:
-    def __init__(self, instance: str):
+    def __init__(self, instance: str = None):
+        if instance is None:
+            instance = my_device.KEYBOARD_DRIVER
         self.is_ready = False
         if instance == "pico_calc":
+            from slime_os.drivers.hid.pico_calc import PicoCalcKeyboard 
             self.driver = PicoCalcKeyboard()
         elif instance == "slime_deck":
+            from slime_os.drivers.hid.slime_deck import SlimeDeckKeyboard
             self.driver = SlimeDeckKeyboard()
         else:
             raise ValueError("Invalid keyboard instance")
@@ -51,7 +54,7 @@ if __name__ == "__main__":
     # Initialize the keyboard
     import time
     from slime_os.keycode import keycode_as_str
-    kbd = Keyboard("slime_deck")
+    kbd = Keyboard()
 
     mapped_keys = kbd.driver.inv_keyboard_map
     for key in mapped_keys:

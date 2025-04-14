@@ -2,6 +2,7 @@ from slime_os.keycode import Keycode
 from machine import Pin, I2C
 import slime_os.drivers.mcp23017 as mcp23017
 from slime_os.drivers.hid.abstract_keyboard import AbstractKeyboard
+from slime_os.device_config import my_device
 
 class SlimeDeckKeyboard(AbstractKeyboard):
     kbd_map = {
@@ -61,7 +62,7 @@ class SlimeDeckKeyboard(AbstractKeyboard):
             self.held[key] = False
 
     def initialize_interface(self):
-        i2c = I2C(1, scl=Pin(7), sda=Pin(6))
+        i2c = I2C(1, scl=Pin(my_device.KEYBOARD_SCL), sda=Pin(my_device.KEYBOARD_SDA), freq=10000)
         self.mcp = mcp23017.MCP23017(i2c, 0x20)
         used = {}
         for key, value in self.keyboard_map:

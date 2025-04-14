@@ -1,6 +1,7 @@
 from slime_os.keycode import Keycode
 from machine import Pin, I2C
 from slime_os.drivers.hid.abstract_keyboard import AbstractKeyboard
+from slime_os.device_config import my_device
 
 class PicoCalcKeyboard(AbstractKeyboard):   
     kbd_map = {
@@ -52,8 +53,8 @@ class PicoCalcKeyboard(AbstractKeyboard):
             self.held[key] = False
 
     def initialize_interface(self):
-        scl=Pin(7,Pin.IN,Pin.PULL_UP)
-        sda=Pin(6,Pin.IN,Pin.PULL_UP)
+        scl=Pin(my_device.KEYBOARD_SCL,Pin.IN,Pin.PULL_UP)
+        sda=Pin(my_device.KEYBOARD_SDA,Pin.IN,Pin.PULL_UP)
         self.i2c = I2C(1, scl=scl, sda=sda, freq=10000)
 
     def get_data(self):

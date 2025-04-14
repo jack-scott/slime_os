@@ -1,15 +1,7 @@
+from slime_os.device_config import device_config
 import time
 
 CTRL_EMPTY=-1
-
-CTRL_UART_9600=0
-CTRL_UART_STANDARD=CTRL_UART_9600
-
-CTRL_UART_115200=1
-CTRL_UART_FAST= CTRL_UART_115200
-
-CTRL_I2C_STANDARD=10
-CTRL_I2C_FAST=11
 
 CTRL_NAMES={
    CTRL_EMPTY: "(Empty)",

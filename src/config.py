@@ -11,7 +11,4 @@ config = {
     "display": {
         "flipped": True
     },
-    "input": {
-        "keyboard": "i2c"        
-    }
 }
