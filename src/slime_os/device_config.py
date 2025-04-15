@@ -22,6 +22,16 @@ class DeviceConfig:
         # KEYBOARD DRIVER
         self.KEYBOARD_DRIVER = "pico_calc"
         
+        # DISPLAY
+        self.DISPLAY_WIDTH = 320
+        self.DISPLAY_HEIGHT = 320
+        self.DISPLAY_CS = 13
+        self.DISPLAY_DC = 14
+        self.DISPLAY_SCK = 10
+        self.DISPLAY_MOSI = 11
+        self.DISPLAY_RESET = 15
+        self.DISPLAY_DRIVER = "pico_calc"
+
         ## UNKNOWN ENUMS ##
         # EXPANSION UART
         self.CTRL_UART_9600 = 0

@@ -1,9 +1,20 @@
-from config import config
+from slime_os.device_config import my_device
+from config import config as display_config
 
 class Gfx:
-    def __init__(self, display):
-        self.display = display
-        self.dw, self.dh = display.get_bounds()
+    def __init__(self, instance:str = None):
+        if instance is None:
+            instance = my_device.DISPLAY_DRIVER
+        if instance == "pico_calc":
+            from slime_os.drivers.display.pico_calc import PicoCalcDisplay
+            self.display = PicoCalcDisplay()
+        elif instance == "picovision":
+            from slime_os.drivers.display.picovision import PicovisionDisplay
+            self.display = PicovisionDisplay()
+        else:
+            raise ValueError("Invalid display instance")
+    
+        self.dw, self.dh = self.display.get_bounds()
 
         self.is_flipped = config["display"]["flipped"]
     

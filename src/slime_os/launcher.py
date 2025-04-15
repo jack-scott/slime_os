@@ -2,27 +2,26 @@ import gc
 import time
 import math
 import random
-from machine import ADC
 import os
-from picovision import PicoVision, PEN_P5
-from pimoroni import Button
-import slime_os as sos
 
-from machine import Pin, I2C, UART, SPI
+from machine import Pin, I2C, UART, SPI, ADC
 
+import picographics
 import sdcard
 
 from slime_os.graphics import *
 from slime_os.expansion import *
 
-import slime_os.intents as intents
 from slime_os.intents import *
 
-from slime_os.keycode import Keycode as keycode
+from slime_os.keycode import Keycode
 
 from slime_os.keyboard import Keyboard
 
 from slime_os.device_config import my_device
+from config import config as display_config
+
+# display_config = config
 
 TMP_DOWNLOAD_PLAY_APP = "/sd/download_play_app.py"
 
@@ -86,10 +85,11 @@ def get_applications() -> list[dict[str, str, str]]:
             print(f"[APP].SYNTAX_ERROR {name}")
 
     return sorted(applications, key=lambda x: x["name"])
+WIDTH=320
+HEIGHT=240
 
-
-# display = PicoVision(PEN_P5, 400, 240)
-gfx = Gfx(display)
+# display = picographics.PicoGraphics(width=WIDTH, height=HEIGHT, frame_width=WIDTH * 2, frame_height=HEIGHT)  # PicoVision(PEN_P5, 400, 240)
+gfx = Gfx(my_device.DISPLAY_DRIVER)
 ctrl = Ctrl(display)
 kbd = Keyboard(my_device.KEYBOARD_DRIVER)
 
@@ -172,15 +172,15 @@ def gfx_expansion_modal(gfx, ctrl_name, attempts, success):
         cy = int((gfx.dh-mh)/2.5)
         padding = 6
         
-        gfx.set_pen(sos.config["theme"]["black"])
+        gfx.set_pen(display_config["theme"]["black"])
         gfx.rectangle(cx+padding, cy+padding, mw, mh)
-        gfx.set_pen(sos.config["theme"]["white"])
+        gfx.set_pen(display_config["theme"]["white"])
         gfx.rectangle(cx, cy, mw, mh)
-        gfx.set_pen(sos.config["theme"]["black"])
+        gfx.set_pen(display_config["theme"]["black"])
         gfx.text("Expansion installed", cx+padding, cy+7, scale=1)
         gfx.line(cx+3, cy+18, cx+mw-3, cy+18)
         
-        gfx.set_pen(sos.config["theme"]["grey"])
+        gfx.set_pen(display_config["theme"]["grey"])
         ctrl_name_width = gfx.measure_text(ctrl_name, scale=1)
         gfx.text(ctrl_name, cx+mw-padding-ctrl_name_width, cy+7, scale=1)
         
@@ -196,21 +196,21 @@ def gfx_expansion_modal(gfx, ctrl_name, attempts, success):
         gw = (mw-padding*2-gspacing*4)//5
         gy = cy+35
         
-        gfx.set_pen(sos.config["theme"]["black"])
+        gfx.set_pen(display_config["theme"]["black"])
         for i in range(0, 5):
             gfx.rectangle(cx+padding+(i*(gw+gspacing)), gy, gw, gh)
             
-        gfx.set_pen(sos.config["theme"]["white"])
+        gfx.set_pen(display_config["theme"]["white"])
         
         for i in range(0, 5):
             gfx.rectangle(cx+padding+1+(i*(gw+gspacing)), gy+1, gw-2, gh-2)
             
-        gfx.set_pen(sos.config["theme"]["yellow"])
+        gfx.set_pen(display_config["theme"]["yellow"])
         if success==False:
-            gfx.set_pen(sos.config["theme"]["red"])
+            gfx.set_pen(display_config["theme"]["red"])
         for i in range(0, attempts):
             if i == attempts-1 and success:
-                gfx.set_pen(sos.config["theme"]["green"])
+                gfx.set_pen(display_config["theme"]["green"])
             gfx.rectangle(cx+padding+1+(i*(gw+gspacing)), gy+1, gw-2, gh-2)
             
 
@@ -221,32 +221,32 @@ def gfx_download_modal(gfx, ctrl_name, percent, success):
         cy = int((gfx.dh-mh)/2.5)
         padding = 6
         
-        gfx.set_pen(sos.config["theme"]["black"])
+        gfx.set_pen(display_config["theme"]["black"])
         gfx.rectangle(cx+padding, cy+padding, mw, mh)
-        gfx.set_pen(sos.config["theme"]["white"])
+        gfx.set_pen(display_config["theme"]["white"])
         gfx.rectangle(cx, cy, mw, mh)
-        gfx.set_pen(sos.config["theme"]["black"])
+        gfx.set_pen(display_config["theme"]["black"])
         gfx.text("Expansion App", cx+padding, cy+7, scale=1)
         gfx.line(cx+3, cy+18, cx+mw-3, cy+18)
         
-        gfx.set_pen(sos.config["theme"]["grey"])
+        gfx.set_pen(display_config["theme"]["grey"])
         ctrl_name_width = gfx.measure_text(ctrl_name, scale=1)
         gfx.text(ctrl_name, cx+mw-padding-ctrl_name_width, cy+7, scale=1)
         
         status = "Attemping to sync app"
         gfx.text(status, cx+padding, cy+24)
         
-        gfx.set_pen(sos.config["theme"]["yellow"])
+        gfx.set_pen(display_config["theme"]["yellow"])
         
         if success:
-            gfx.set_pen(sos.config["theme"]["green"])
+            gfx.set_pen(display_config["theme"]["green"])
             
         gh = 14
         gy = cy+35
         gfx.rectangle(cx+padding, gy, int((mw-padding*2)*percent), gh)
         
         if success:
-            gfx.set_pen(sos.config["theme"]["white"])
+            gfx.set_pen(display_config["theme"]["white"])
             status = "App installed."
             gfx.text(status, cx+padding+padding, gy+5)
 
@@ -309,10 +309,10 @@ class App:
         if sos.persist["launcher"]["selected_app"] >= len(self.apps):
             sos.persist["launcher"]["selected_app"] = 0
             
-        self.display.set_pen(sos.config["theme"]["blue"])
+        self.display.set_pen(display_config["theme"]["blue"])
         self.display.rectangle(0, 0, sos.gfx.dw, sos.gfx.dh)
         
-        self.display.set_pen(sos.config["theme"]["white"])
+        self.display.set_pen(display_config["theme"]["white"])
         for app_index, app in enumerate(self.apps):
 
            offset_x = 50 + (app_index * 64)
@@ -329,7 +329,7 @@ class App:
                sos.gfx.line(offset_x-31, offset_y+28, offset_x-31, offset_y-15)
              
         
-           self.display.set_pen(sos.config["theme"]["white"])
+           self.display.set_pen(display_config["theme"]["white"])
            if is_temporary:
                for i in range(-2, 4):
                    dx = (i*6) - 6
@@ -346,7 +346,7 @@ class App:
                #sos.gfx.line(offset_x-32, offset_y+28, offset_x-32, offset_y-15, 5)'''
   
                
-           self.display.set_pen(sos.config["theme"]["white"])
+           self.display.set_pen(display_config["theme"]["white"])
            
            name_width = self.display.measure_text(app["name"], scale=1)
            
@@ -457,17 +457,17 @@ class App:
                 yield sos.INTENT_FLIP_BUFFER
                 last_selected_app = sos.persist["launcher"]["selected_app"]
                 
-            keys = sos.kbd.get_keys([
-                sos.keycode.ENTER,
-                sos.keycode.LEFT_ARROW,
-                sos.keycode.RIGHT_ARROW
+            keys = kbd.get_keys([
+                Keycode.ENTER,
+                Keycode.LEFT_ARROW,
+                Keycode.RIGHT_ARROW
             ])
             
-            if keys[sos.keycode.LEFT_ARROW]:
+            if keys[Keycode.LEFT_ARROW]:
                 sos.persist["launcher"]["selected_app"] -= 1
-            if keys[sos.keycode.RIGHT_ARROW]:
+            if keys[Keycode.RIGHT_ARROW]:
                 sos.persist["launcher"]["selected_app"] += 1
-            if keys[sos.keycode.ENTER]:
+            if keys[Keycode.ENTER]:
                 yield sos.INTENT_REPLACE_APP(
                     self.apps[sos.persist["launcher"]["selected_app"]]
                     )
