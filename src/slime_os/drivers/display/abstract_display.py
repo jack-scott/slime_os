@@ -7,7 +7,7 @@ class AbstractDisplay:
         """
         Returns the width and height of the display.
         """
-        return self.width, self.height
+        return self.width -1, self.height -1
 
     def set_pen(self, r, g, b):
         """

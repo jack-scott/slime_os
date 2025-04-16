@@ -12,10 +12,10 @@ class DeviceConfig:
         self.EXPANSION_UART_TX = 0
         self.EXPANSION_UART_RX = 1
         # SD CARD SPI
-        self.SD_CARD_SCK = 10
-        self.SD_CARD_MOSI = 11
-        self.SD_CARD_MISO = 12
-        self.SD_CARD_CS = 15 # TODO: Double check this is actually used as a CS pin
+        self.SD_CARD_SCK = 18
+        self.SD_CARD_MOSI = 19
+        self.SD_CARD_MISO = 16
+        self.SD_CARD_CS = 17 # TODO: Double check this is actually used as a CS pin
         # KEYBOARD
         self.KEYBOARD_SCL = 7
         self.KEYBOARD_SDA = 6

@@ -25,8 +25,9 @@ class Ctrl:
     def __init__(self, display):
         self.display = display
     
-    def get(self, debug=False):
-        voltage = self.display.get_gpu_io_adc_voltage(29)
+    def get(self, debug=True):
+        # voltage = self.display.get_gpu_io_adc_voltage(29)
+        voltage = 3.3
         
         if debug:
             print(f"The voltage on pin 29 is {voltage:.02f}V")
@@ -37,17 +38,18 @@ class Ctrl:
             return CTRL_EMPTY
     
     def check(self):
-        tick = time.ticks_ms()
+        return False
+        # tick = time.ticks_ms()
         
-        if (tick-self.last_poll) < 1000:
-            return False
+        # if (tick-self.last_poll) < 1000:
+        #     return False
         
-        self.last_poll = tick
+        # self.last_poll = tick
             
-        ctrl = self.get()
+        # ctrl = self.get()
         
-        if self.last_ctrl != ctrl:
-            self.last_ctrl = ctrl
-            return True
-        else:
-            return False
+        # if self.last_ctrl != ctrl:
+        #     self.last_ctrl = ctrl
+        #     return True
+        # else:
+        #     return False

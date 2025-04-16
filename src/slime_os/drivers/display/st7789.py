@@ -33,6 +33,7 @@ class ST7789Display(AbstractDisplay):
             buffer_size=buffer_size
         )
         self.display.init()
+        self.display.fill(0)
 
         self.default_pen = st7789.color565(255, 255, 255)  # White
         self.default_font = imported_font
@@ -64,7 +65,8 @@ class ST7789Display(AbstractDisplay):
         Draws a line on the display.
         """
         if t != 1:
-            raise NotImplementedError("Line thickness not supported in ST7789 driver.")
+            pass
+            # raise NotImplementedError("Line thickness not supported in ST7789 driver.")
         self.display.line(x, y, x2, y2, self.current_pen)
 
 
@@ -81,7 +83,7 @@ class ST7789Display(AbstractDisplay):
         """
         Measures the size of the text.
         """
-        return self.display.draw_len(self.font, text, scale=scale)
+        return self.display.draw_len(self.font, text, scale)
 
     def update(self):
         """

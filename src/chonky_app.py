@@ -7,6 +7,7 @@ import jpegdec
 import time
 import slime_os as sos
 
+
 class App:
     def setup(self, display):
         self.display = display

@@ -64,6 +64,6 @@ if __name__ == "__main__":
             if pressed:
                 print(f"Got press")
                 break
-            time.sleep(0.1)
+            time.sleep(0.01)
 
     print("All keys are working as expected")

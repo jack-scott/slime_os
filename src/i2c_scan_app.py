@@ -3,8 +3,7 @@ app["name"]="I2C Scan"
 app["id"]="i2c_scan"
 app["icon"]="0000000000000000000011010000000000000000000000000001111010000000000111101000000000011110101100000001111010111000000111101001110000011110100011100001111010000110000000000000011000001101000001100000000000001110000000000001110000111111010110000001111010110000"
 '''
-import random
-import slime_os as sos
+import slime_os.system as sos
 
 class App:
     def setup(self, display):
@@ -15,11 +14,10 @@ class App:
         self.cols = "0123456789ABCDEF"
         self.rows = "01234567"
     
-        self.display = display
-        self.display.set_pen(sos.config["theme"]["blue"])
+        sos.gfx.set_pen(*sos.display_config["theme"]["blue"])
         self.cursor = {"x": 0, "y": 0}
-        w, h = display.get_bounds()
-        display.rectangle(0, 0, w, h)
+        w, h = sos.gfx.get_bounds()
+        sos.gfx.rectangle(0, 0, w, h)
         
         self.devices = {}
 
@@ -56,24 +54,24 @@ class App:
             if self.cursor["y"] > 7:
                 self.cursor["y"] = 0
                 
-            self.display.set_pen(sos.config["theme"]["blue"])
-            w, h = self.display.get_bounds()
-            self.display.rectangle(0, 0, w, h)
-            self.display.set_pen(sos.config["theme"]["white"])
+            sos.gfx.set_pen(*sos.display_config["theme"]["blue"])
+            w, h = sos.gfx.get_bounds()
+            sos.gfx.rectangle(0, 0, w, h)
+            sos.gfx.set_pen(*sos.display_config["theme"]["white"])
             
             y_offset = 26
             x_offset = 36
             
             for col_index, col in enumerate(self.cols):
-                self.display.text(col, 400-x_offset-((col_index+1)*20), 240-y_offset, -1, 1, 180)
+                sos.gfx.text(col, 400-x_offset-((col_index+1)*20), 240-y_offset)
                 
             #f'{device:x}'
             #print()
             selected_device = "No Device selected."
             for row_index, row in enumerate(self.rows):
                 y = 240-y_offset-((row_index+1)*16)
-                self.display.set_pen(sos.config["theme"]["white"])
-                self.display.text(row, 400-x_offset, y, -1, 1, 180)
+                sos.gfx.set_pen(*sos.display_config["theme"]["white"])
+                sos.gfx.text(row, 400-x_offset, y)
                 for col_index in range(1, 17):
                     table_x = col_index-1
                     table_y = row_index
@@ -85,24 +83,24 @@ class App:
                     is_cursor = self.cursor["x"] == table_x and self.cursor["y"] == table_y
                     
                     if is_cursor:
-                        self.display.set_pen(sos.config["theme"]["black"])
-                        self.display.rectangle(x-12, y-8, 16, 11)
+                        sos.gfx.set_pen(*sos.display_config["theme"]["black"])
+                        sos.gfx.rectangle(x-12, y-8, 16, 11)
                     
                     if pos in self.devices:
                         text = self.devices[pos]["addr"]
-                        self.display.set_pen(sos.config["theme"]["white"])
+                        sos.gfx.set_pen(*sos.display_config["theme"]["white"])
                         if is_cursor:
                             selected_device = f'Device: {self.devices[pos]["name"]}'
                         if not is_cursor:
-                            self.display.rectangle(x-12, y-8, 16, 11)
-                            self.display.set_pen(sos.config["theme"]["black"])
+                            sos.gfx.rectangle(x-12, y-8, 16, 11)
+                            sos.gfx.set_pen(*sos.display_config["theme"]["black"])
                     else:
-                        self.display.set_pen(sos.config["theme"]["white"])
+                        sos.gfx.set_pen(*sos.display_config["theme"]["white"])
                         
-                    self.display.text(text, x, y, -1, 1, 180)
+                    sos.gfx.text(text, x, y)
                     
-            self.display.line(400-x_offset, 240-y_offset-144, x_offset, 240-y_offset-144)
-            self.display.text(selected_device, 400-x_offset, 240-y_offset-152, -1, 1, 180)
+            sos.gfx.line(400-x_offset, 240-y_offset-144, x_offset, 240-y_offset-144)
+            sos.gfx.text(selected_device, 400-x_offset, 240-y_offset-152)
             
             yield sos.INTENT_FLIP_BUFFER
             while True:
