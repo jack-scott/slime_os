@@ -4,7 +4,7 @@ import romanp as imported_font
 from machine import SPI, Pin, freq
 
 class ST7789Display(AbstractDisplay):
-    def __init__(self, width, height, spi, cs, dc, reset, custom_init=None, custom_rotations=None, rotation=2, color_order=st7789.RGB, inversion=False, options=0, buffer_size=0):
+    def __init__(self, width, height, spi, cs, dc, reset, custom_init=None, custom_rotations=None, rotation=2, color_order=st7789.RGB, inversion=False, options=0, buffer_size=0, backlight=None):
         super().__init__(width, height)
         self.spi = spi
         self.cs = cs
@@ -30,9 +30,12 @@ class ST7789Display(AbstractDisplay):
             inversion=self.inversion,
             options=self.options,
             rotations=self.custom_rotations,
-            buffer_size=buffer_size
+            buffer_size=buffer_size,
+            backlight=backlight
         )
         self.display.init()
+        self.display.off()
+        self.display.on()
         self.display.fill(0)
 
         self.default_pen = st7789.color565(255, 255, 255)  # White
@@ -51,7 +54,6 @@ class ST7789Display(AbstractDisplay):
         Draws a rectangle on the display.
         """
         self.display.fill_rect(x, y, w, h, self.current_pen)
-
 
     def pixel(self, x, y):
         """

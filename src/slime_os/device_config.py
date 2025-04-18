@@ -6,11 +6,11 @@
 class DeviceConfig:
     def __init__(self):
         # EXPANSION I2C
-        self.EXPANSION_SCL = 1
-        self.EXPANSION_SDA = 0
+        self.EXPANSION_SCL = 3
+        self.EXPANSION_SDA = 2
         # EXPANSION UART
-        self.EXPANSION_UART_TX = 0
-        self.EXPANSION_UART_RX = 1
+        self.EXPANSION_UART_TX = 4
+        self.EXPANSION_UART_RX = 5
         # SD CARD SPI
         self.SD_CARD_SCK = 18
         self.SD_CARD_MOSI = 19
@@ -30,6 +30,7 @@ class DeviceConfig:
         self.DISPLAY_SCK = 10
         self.DISPLAY_MOSI = 11
         self.DISPLAY_RESET = 15
+        self.DISPLAY_BACKLIGHT = 8
         self.DISPLAY_DRIVER = "pico_calc"
 
         ## UNKNOWN ENUMS ##
