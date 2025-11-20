@@ -110,15 +110,22 @@ class Launcher(App):
 
             if keys[Keycode.UP_ARROW]:
                 # Move selection up
-                self.selected_index = max(0, self.selected_index - 1)
+                self.selected_index = self.selected_index - 1
+                # wrap around if at the top
+                if self.selected_index < 0:
+                    self.selected_index = len(self.apps) - 1
 
             if keys[Keycode.DOWN_ARROW]:
-                # Move selection down
-                self.selected_index = min(len(self.apps) - 1, self.selected_index + 1)
+                # Moverun selection down
+                self.selected_index = self.selected_index + 1
+                # wrap around if at the bottom
+                if self.selected_index >= len(self.apps):
+                    self.selected_index = 0
 
             if keys[Keycode.ENTER]:
                 # Launch selected app
                 selected_app = self.apps[self.selected_index]
+                self.sys.log.debug(f"Launcher: Launching {selected_app.name}")
                 return ('launch', selected_app)
 
             yield

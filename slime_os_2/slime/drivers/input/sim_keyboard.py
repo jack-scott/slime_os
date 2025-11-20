@@ -105,11 +105,15 @@ class SimKeyboard(AbstractInput):
         # Track currently pressed keys
         self.pressed_keys = set()
 
+        # Track keys that were pressed last frame (for edge detection)
+        self.prev_pressed_keys = set()
+
         print("[SimKeyboard] Initialized")
 
     def clear_state(self):
         """Clear all pressed keys (useful when launching new app)"""
         self.pressed_keys.clear()
+        self.prev_pressed_keys.clear()
 
     def _update_state(self):
         """Update keyboard state from pygame"""
@@ -133,32 +137,44 @@ class SimKeyboard(AbstractInput):
 
     def get_key(self, keycode):
         """
-        Check if a specific key is pressed.
+        Check if a specific key was just pressed (edge detection).
 
         Args:
             keycode: Keycode constant
 
         Returns:
-            True if pressed, False otherwise
+            True if pressed this frame (not last frame), False otherwise
         """
         # Update state
         self._update_state()
 
-        # Check if key is pressed
-        return keycode in self.pressed_keys
+        # Check if key is newly pressed (pressed now, but not last frame)
+        is_newly_pressed = keycode in self.pressed_keys and keycode not in self.prev_pressed_keys
+
+        # Update previous state for next frame
+        self.prev_pressed_keys = self.pressed_keys.copy()
+
+        return is_newly_pressed
 
     def get_keys(self, keycodes):
         """
-        Check multiple keys at once.
+        Check multiple keys at once (edge detection).
 
         Args:
             keycodes: List of keycode constants
 
         Returns:
-            Dict mapping each keycode to True/False
+            Dict mapping each keycode to True/False (True if newly pressed)
         """
         # Update state once
         self._update_state()
 
-        # Check each key
-        return {keycode: keycode in self.pressed_keys for keycode in keycodes}
+        # Check each key for new presses
+        result = {}
+        for keycode in keycodes:
+            result[keycode] = keycode in self.pressed_keys and keycode not in self.prev_pressed_keys
+
+        # Update previous state for next frame
+        self.prev_pressed_keys = self.pressed_keys.copy()
+
+        return result

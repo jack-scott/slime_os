@@ -299,13 +299,21 @@ class System:
                     # Get next result from app
                     try:
                         result = next(app_generator)
-                    except StopIteration:
-                        # App returned (generator exhausted)
+                    except StopIteration as e:
+                        # Generator returned - check if it returned a value
+                        if hasattr(e, 'value') and e.value:
+                            result = e.value
+                            # Check if it's a launch command
+                            if isinstance(result, tuple) and result[0] == 'launch':
+                                current_app_class = result[1]
+                                self.log.info(f"Launching {current_app_class.name if hasattr(current_app_class, 'name') else 'App'}")
+                                break
+                        # Otherwise just exit normally
                         self.log.info("App exited normally")
                         current_app_class = initial_app_class
                         break
 
-                    # Handle special return values
+                    # Handle special return values from yield
                     if result and isinstance(result, tuple):
                         if result[0] == 'launch':
                             # App wants to launch another app
