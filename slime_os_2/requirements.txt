@@ -1,0 +1,7 @@
+# Slime OS 2 - Simulator Requirements
+
+# Required for simulator
+pygame>=2.5.0
+
+# Optional: For hot-reload support
+watchdog>=3.0.0
