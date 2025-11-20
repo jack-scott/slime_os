@@ -1,7 +1,6 @@
 from slime_os.device_config import my_device
 from slime_os.keyboard import Keyboard
 from slime_os.graphics import Gfx
-from slime_os.expansion import Ctrl
 from slime_os.intents import *
 from config import config as display_config
 
@@ -9,44 +8,30 @@ import os
 import gc
 from machine import Pin, I2C, UART, SPI
 
-import sdcard
+# import sdcard
 from slime_os.launcher import HomeScreen
 from slime_os.keycode import Keycode as keycode
 
 def get_internal_i2c():
     return I2C(1, scl=Pin(my_device.KEYBOARD_SCL), sda=Pin(my_device.KEYBOARD_SDA))
 
-def get_expansion_i2c():
-    return I2C(1, scl=Pin(my_device.EXPANSION_SCL), sda=Pin(my_device.EXPANSION_SDA))
-
-def get_expansion_uart(baudrate=115200):
-    return UART(0, baudrate, tx=Pin(my_device.EXPANSION_UART_TX), rx=Pin(my_device.EXPANSION_UART_RX))
-    
-def get_sdcard():
-    sd_spi = SPI(0, sck=Pin(my_device.SD_CARD_SCK, Pin.OUT), mosi=Pin(my_device.SD_CARD_MOSI, Pin.OUT), miso=Pin(my_device.SD_CARD_MISO, Pin.OUT))
-    return sdcard.SDCard(sd_spi, Pin(my_device.SD_CARD_CS))
+# def get_sdcard():
+#     sd_spi = SPI(0, sck=Pin(my_device.SD_CARD_SCK, Pin.OUT), mosi=Pin(my_device.SD_CARD_MOSI, Pin.OUT), miso=Pin(my_device.SD_CARD_MISO, Pin.OUT))
+#     return sdcard.SDCard(sd_spi, Pin(my_device.SD_CARD_CS))
 
 gfx = Gfx(my_device.DISPLAY_DRIVER)
-ctrl = Ctrl(gfx)
 kbd = Keyboard(my_device.KEYBOARD_DRIVER)
 
 persist = {}
 
-sd = get_sdcard()
-os.mount(sd, "/sd")
-TMP_DOWNLOAD_PLAY_APP = "/sd/download_play_app.py"
-try:
-    os.remove(TMP_DOWNLOAD_PLAY_APP)
-    print("[sos].temp_file_removed")
-except:
-    print("[sos].temp_file_missing")
+# sd = get_sdcard()
+# os.mount(sd, "/sd")
 
 def get_applications() -> list[dict[str, str, str]]:
     applications = []
     global app
     
     app_files = os.listdir()
-    download_play_app = TMP_DOWNLOAD_PLAY_APP
     
     for file in app_files:
         if file.endswith("app.py"):
@@ -54,14 +39,6 @@ def get_applications() -> list[dict[str, str, str]]:
                 "file": file[:-3],
             })
             
-    try:
-        os.stat(download_play_app)  # Get file information
-        applications.append({
-            "file": download_play_app[:-3],
-            "temporary": True
-        })
-    except OSError:
-        pass
     
     for app in applications:
         frontmatter = ""
@@ -153,88 +130,3 @@ def free(full=False):
     if not full: return P
     else : return ('T:{0} F:{1} ({2})'.format(T,F,P))
 
-
-def gfx_expansion_modal(gfx, ctrl_name, attempts, success):
-    mw = 199
-    mh = 54
-    cx = (gfx.dw-mw)//2
-    cy = int((gfx.dh-mh)/2.5)
-    padding = 6
-    
-    gfx.set_pen(display_config["theme"]["black"])
-    gfx.rectangle(cx+padding, cy+padding, mw, mh)
-    gfx.set_pen(display_config["theme"]["white"])
-    gfx.rectangle(cx, cy, mw, mh)
-    gfx.set_pen(display_config["theme"]["black"])
-    gfx.text("Expansion installed", cx+padding, cy+7, scale=1)
-    gfx.line(cx+3, cy+18, cx+mw-3, cy+18)
-    
-    gfx.set_pen(display_config["theme"]["grey"])
-    ctrl_name_width = gfx.measure_text(ctrl_name, scale=1)
-    gfx.text(ctrl_name, cx+mw-padding-ctrl_name_width, cy+7, scale=1)
-    
-    status = "Attemping to handshake..."
-    if success == False:
-        status = "Hankshake failure."
-    if success == True:
-        status = "Handshake success."
-    gfx.text(status, cx+padding, cy+24)
-    
-    gspacing = 3
-    gh = 14
-    gw = (mw-padding*2-gspacing*4)//5
-    gy = cy+35
-    
-    gfx.set_pen(display_config["theme"]["black"])
-    for i in range(0, 5):
-        gfx.rectangle(cx+padding+(i*(gw+gspacing)), gy, gw, gh)
-        
-    gfx.set_pen(display_config["theme"]["white"])
-    
-    for i in range(0, 5):
-        gfx.rectangle(cx+padding+1+(i*(gw+gspacing)), gy+1, gw-2, gh-2)
-        
-    gfx.set_pen(display_config["theme"]["yellow"])
-    if success==False:
-        gfx.set_pen(display_config["theme"]["red"])
-    for i in range(0, attempts):
-        if i == attempts-1 and success:
-            gfx.set_pen(display_config["theme"]["green"])
-        gfx.rectangle(cx+padding+1+(i*(gw+gspacing)), gy+1, gw-2, gh-2)
-            
-
-def gfx_download_modal(gfx, ctrl_name, percent, success):
-    mw = 199
-    mh = 54
-    cx = (gfx.dw-mw)//2
-    cy = int((gfx.dh-mh)/2.5)
-    padding = 6
-    
-    gfx.set_pen(display_config["theme"]["black"])
-    gfx.rectangle(cx+padding, cy+padding, mw, mh)
-    gfx.set_pen(display_config["theme"]["white"])
-    gfx.rectangle(cx, cy, mw, mh)
-    gfx.set_pen(display_config["theme"]["black"])
-    gfx.text("Expansion App", cx+padding, cy+7, scale=1)
-    gfx.line(cx+3, cy+18, cx+mw-3, cy+18)
-    
-    gfx.set_pen(display_config["theme"]["grey"])
-    ctrl_name_width = gfx.measure_text(ctrl_name, scale=1)
-    gfx.text(ctrl_name, cx+mw-padding-ctrl_name_width, cy+7, scale=1)
-    
-    status = "Attemping to sync app"
-    gfx.text(status, cx+padding, cy+24)
-    
-    gfx.set_pen(display_config["theme"]["yellow"])
-    
-    if success:
-        gfx.set_pen(display_config["theme"]["green"])
-        
-    gh = 14
-    gy = cy+35
-    gfx.rectangle(cx+padding, gy, int((mw-padding*2)*percent), gh)
-    
-    if success:
-        gfx.set_pen(display_config["theme"]["white"])
-        status = "App installed."
-        gfx.text(status, cx+padding+padding, gy+5)

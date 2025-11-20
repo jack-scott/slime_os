@@ -4,10 +4,6 @@ from slime_os.keycode import Keycode
 import os
 import slime_os.system as sos
 
-from slime_os.expansion import *
-
-# from config import config as sos.display_config
-
 class HomeScreen:
     def setup(self, display):
         self.display = display
@@ -24,39 +20,6 @@ class HomeScreen:
     def do_get_apps(self):
         self.apps = sos.get_applications()
         self.str_apps = str(self.apps)
-        
-    def do_uart_expansion(self):
-        ctrl = sos.ctrl
-        gfx = sos.gfx
-        ctrl_value = ctrl.get()
-        
-        uart = sos.get_expansion_uart()
-        
-        accepted = False
-        for i in range(0, 6):
-            time.sleep(1)
-            print(f"[EXP].HANDSHAKE_WAITING: {i}")
-            if i != 5:
-                sos.gfx_expansion_modal(sos.gfx, CTRL_NAMES[ctrl_value], i, None)
-                yield sos.INTENT_FLIP_BUFFER
-            uart_data = uart.readline()
-            
-            if uart_data:
-                data_string = ''.join([chr(b) for b in uart_data])
-                print(f"> {data_string}")
-                if data_string.strip()[0:5] == "[sos]":
-                    print("[EXP].HANDSHAKE_ACCEPTED")
-                    accepted = True
-                    sos.gfx_expansion_modal(gfx, CTRL_NAMES[ctrl_value], i, True)
-                    yield sos.INTENT_FLIP_BUFFER
-                    break
-            else:
-                print("> [no data]")
-                
-        if not accepted:
-            sos.gfx_expansion_modal(gfx, CTRL_NAMES[ctrl_value], i, False)
-            yield sos.INTENT_FLIP_BUFFER
-            print("[EXP].HANDSHAKE_REJECTED")
                     
 
     def do_menu(self):
@@ -123,93 +86,10 @@ class HomeScreen:
                            y = (bit_index // size) - size//2
                            x = (bit_index % size) - size//2
                            sos.gfx.pixel(offset_x + x, offset_y  + y)
-
-    def do_download_play(self):
-        uart = sos.get_expansion_uart()
-        uart.write(bytes("[sos].app", "ascii"))
-        time.sleep(0.1)
-        
-        fails = 0
-        line = ''
-        length = 1
-        size = 0
-        
-        tmp_file = "/sd/download_play_app.py"
-        with open(tmp_file, "w") as f:
-            while True:
-                uart_data = uart.read(128)
-                
-                if uart_data is not None:
-                    fails = 0
-                    for b in uart_data:
-                        char = chr(b)
-                        line += char
-                        
-                        if char == "\n":
-                            
-                            if line[0:14] == "[sos].app:yes:":
-                                size = int(line[14:])
-                                print("[EXP].APP_DOWNLOAD_START")
-                                yield (-size + length)
-                            elif line[0:14] == "[\sos].app:yes":
-                                yield (-size + length)
-                                print(f"[EXP].APP_DOWNLOAD_END:{length} of {size}")
-                                break
-                            else:
-                                length += len(line)
-                                f.write(line)
-                                yield (-size + length)
-                            line = ""
-                            
-                else:
-                    fails += 1
-                    if (fails > 10000):
-                        break
-                    
-            f.close()
             
     def run(self):
         last_selected_app = -1
         while True:
-            if sos.ctrl.check():
-                ctrl_value = sos.ctrl.get()
-                ctrl_name = CTRL_NAMES[ctrl_value]
-                print(f"[EXP].CHANGE: {ctrl_name}")
-                if ctrl_value == CTRL_EMPTY:
-                    try:
-                        os.remove("/sd/download_play_app.py")
-                        print("[sos].temp_file_removed")
-                    except:
-                        print("[sos].temp_file_missing")
-                
-                if ctrl_value == CTRL_UART_115200:
-                    do = self.do_uart_expansion()
-                    last_selected_app = sos.persist["launcher"]["selected_app"]
-                    
-                    while do:
-                        self.do_menu()
-                        try:
-                            yield next(do)
-                        except StopIteration:
-                            time.sleep(3)
-                            break
-                        
-                    do = self.do_download_play()
-                    size = -next(do)
-                    while do:
-                        try:
-                            remaining = next(do)
-                            percent = 1-(-remaining/size)
-                            sos.gfx_download_modal(sos.gfx, ctrl_name, percent, remaining == 0)
-                            yield sos.INTENT_FLIP_BUFFER
-                        except StopIteration:
-                            time.sleep(3)
-                            break
-                    
-                self.do_get_apps()
-                self.do_menu()
-                yield sos.INTENT_FLIP_BUFFER
-            
             if last_selected_app != sos.persist["launcher"]["selected_app"]:
                 self.do_menu()
                 yield sos.INTENT_FLIP_BUFFER

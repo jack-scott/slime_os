@@ -4,9 +4,10 @@ app["id"]="i2c_scan"
 app["icon"]="0000000000000000000011010000000000000000000000000001111010000000000111101000000000011110101100000001111010111000000111101001110000011110100011100001111010000110000000000000011000001101000001100000000000001110000000000001110000111111010110000001111010110000"
 '''
 import slime_os.system as sos
+from slime_os.libs.app_template import TemplateApp
 
-class App:
-    def setup(self, display):
+class App(TemplateApp):
+    def setup(self):
         self.known_addresses = {
             "0D": "PicoVision GPU",
             "20": "Keyboard GPIO Expander"
@@ -131,11 +132,6 @@ class App:
                     
                 if keys[sos.keycode.Q]:
                     yield sos.INTENT_KILL_APP
-                
-  
-        
-    def cleanup(self):
-        pass
 
 
 if __name__ == '__main__':

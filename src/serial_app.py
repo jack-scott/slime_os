@@ -3,16 +3,10 @@ app["name"]="Serial"
 app["id"]="serial_app"
 app["icon"]="0000000000000000000100000000100000101000000101000010010000100100010001111110001001001100001100100101111111111010011111100111111001111111111111101111011111101111101101111110110111011110011110111011011001101101111110011001111101111111111111100001111111111000"
 '''
-import jpegdec
-import time
 import slime_os as sos
+from slime_os.libs.app_template import TemplateApp
 
-class App:
-    def setup(self, display):
-        # 72 wide, 25 tall
-        pass
-
-
+class App(TemplateApp):
     def run(self):
         offset = 0
         while True:
@@ -31,8 +25,6 @@ class App:
                 break
             yield sos.INTENT_FLIP_BUFFER
         
-    def cleanup(self):
-        pass
 
 if __name__ == '__main__':
     sos.boot(App)
