@@ -34,7 +34,8 @@ def get_device(device_name):
 
     # Dynamic import - only load the device module we need
     module_path, class_name = _DEVICES[device_name].rsplit(".", 1)
-    module = __import__(module_path, fromlist=[class_name])
+    # MicroPython's __import__ doesn't accept keyword arguments
+    module = __import__(module_path, None, None, [class_name])
     device_class = getattr(module, class_name)
 
     # Instantiate and return

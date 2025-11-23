@@ -28,6 +28,7 @@ class Launcher(App):
         super().__init__(system)
         self.apps = []
         self.selected_index = 0
+        self.need_update = True
 
     def discover_apps(self):
         """
@@ -57,7 +58,8 @@ class Launcher(App):
             module_name = filename[:-3]  # Remove .py
             try:
                 # Dynamic import
-                module = __import__(f'apps.{module_name}', fromlist=['*'])
+                # MicroPython's __import__ doesn't accept keyword arguments
+                module = __import__(f'apps.{module_name}', None, None, ['*'])
 
                 # Look for App class that's actually an App subclass
                 for attr_name in dir(module):
@@ -99,7 +101,9 @@ class Launcher(App):
         self.sys.log.debug("Launcher: Entering main loop")
         while True:
             # Draw UI
-            self._draw_ui()
+            if self.need_update:
+                self._draw_ui()
+                self.need_update = False
 
             # Handle input
             keys = self.sys.keys_pressed([
@@ -107,6 +111,10 @@ class Launcher(App):
                 Keycode.DOWN_ARROW,
                 Keycode.ENTER
             ])
+
+            # Check if any key was pressed
+            if any(keys.values()):
+                self.need_update = True
 
             if keys[Keycode.UP_ARROW]:
                 # Move selection up
@@ -116,7 +124,7 @@ class Launcher(App):
                     self.selected_index = len(self.apps) - 1
 
             if keys[Keycode.DOWN_ARROW]:
-                # Moverun selection down
+                # Move selection down
                 self.selected_index = self.selected_index + 1
                 # wrap around if at the bottom
                 if self.selected_index >= len(self.apps):

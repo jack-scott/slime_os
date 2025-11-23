@@ -109,7 +109,7 @@ class PicoCalcDisplay(AbstractDisplay):
         # Framebuffer for improved performance
         # 320x100 pixels = 64KB (fits in RAM)
         self.fbuf_w = 320
-        self.fbuf_h = 100
+        self.fbuf_h = 320
         self.fbuf = framebuf.FrameBuffer(
             bytearray(self.fbuf_w * self.fbuf_h * 2),
             self.fbuf_w,
@@ -120,22 +120,23 @@ class PicoCalcDisplay(AbstractDisplay):
 
     def set_pen(self, r, g, b):
         """Set drawing color"""
-        self.current_pen = st7789.color565(r, g, b)
+        self.set_pen_fb(r,g,b)
 
     def rectangle(self, x, y, w, h):
         """Draw filled rectangle"""
-        self.display.fill_rect(x, y, w, h, self.current_pen)
+        self.rectangle_fb(x,y,w,h)
 
     def pixel(self, x, y):
         """Draw single pixel"""
-        self.display.pixel(x, y, self.current_pen)
+        self.pixel_fb(x,y)
 
     def line(self, x1, y1, x2, y2):
         """Draw line"""
-        self.display.line(x1, y1, x2, y2, self.current_pen)
+        self.line_fb(x1,y1,x2,y2)
 
     def text(self, text, x, y, scale=1):
         """Draw text"""
+        # pass
         if self.font is None:
             return  # No font available
         self.display.draw(self.font, text, x, y, self.current_pen, scale)
@@ -153,7 +154,7 @@ class PicoCalcDisplay(AbstractDisplay):
         Note: Currently drawing directly to display, so this is a no-op.
         Framebuffer methods (below) can be used for improved performance.
         """
-        pass
+        self.blit_framebuffer()
 
     # ========================================================================
     # Framebuffer methods (optional, for performance)

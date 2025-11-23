@@ -18,8 +18,17 @@ import sys
 import os
 import argparse
 
-# Add compat directory to path (for hardware stubs)
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Set up paths
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # dev/
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR)  # slime_os_2/
+
+# Change to project directory so relative paths (like 'apps/') work correctly
+os.chdir(PROJECT_DIR)
+
+# Add project directory to path FIRST (for apps, slime, lib, config)
+sys.path.insert(0, PROJECT_DIR)
+
+# Add compat directory to path (for hardware stubs like machine, st7789, etc.)
 COMPAT_DIR = os.path.join(SCRIPT_DIR, 'compat')
 sys.path.insert(0, COMPAT_DIR)
 

@@ -7,6 +7,7 @@ This is the only file you need to edit to configure your device.
 # Device Selection
 # Available devices: "pico_calc", "simulator"
 DEVICE = "pico_calc"  # Use "simulator" for desktop, "pico_calc" for hardware
+# DEVICE = "simulator"  # Use "simulator" for desktop, "pico_calc" for hardware
 
 # Watchdog Timer (optional)
 # Set to None to disable (development mode)

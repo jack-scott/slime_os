@@ -1,5 +1,6 @@
 #!/bin/bash
 # Deploy Slime OS 2 to Pico Calc Hardware
+# Automatically detects and uploads all necessary files
 
 set -e  # Exit on error
 
@@ -26,73 +27,102 @@ fi
 echo "✓ Pico detected"
 echo ""
 
-# Confirm deployment
-echo "This will upload Slime OS 2 to your Pico Calc."
-echo "Make sure config.py is set to DEVICE = \"pico_calc\""
-read -p "Continue? (y/n) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Deployment cancelled"
-    exit 0
-fi
-
 echo ""
 echo "Uploading files..."
 echo ""
 
-# Upload main files
-echo "→ Uploading main.py..."
-mpremote cp main.py :
+# Files/directories to exclude from upload
+# (dev/ folder contains all development-only files)
+EXCLUDE_PATTERNS=(
+    "dev"
+    "__pycache__"
+    "*.pyc"
+    ".git"
+    "simulator.py"
+    "sim_display.py"
+    "sim_keyboard.py"
+)
 
-echo "→ Uploading config.py..."
-mpremote cp config.py :
+# Function to check if a path should be excluded
+should_exclude() {
+    local path="$1"
+    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+        if [[ "$path" == *"$pattern"* ]]; then
+            return 0  # true, should exclude
+        fi
+    done
+    return 1  # false, should not exclude
+}
 
-# Upload lib/
-echo "→ Creating lib/ directory..."
-mpremote mkdir lib 2>/dev/null || true
-echo "→ Uploading lib/keycode.py..."
-mpremote cp lib/keycode.py :lib/
+# Function to recursively upload directory
+upload_directory() {
+    local local_dir="$1"
+    local remote_dir="$2"
 
-# Upload apps/
-echo "→ Creating apps/ directory..."
-mpremote mkdir apps 2>/dev/null || true
-echo "→ Uploading apps..."
-mpremote cp apps/__init__.py :apps/
-mpremote cp apps/launcher.py :apps/
-mpremote cp apps/flashlight.py :apps/
-mpremote cp apps/log_viewer.py :apps/
+    # Create remote directory
+    if [ -n "$remote_dir" ]; then
+        echo "→ Creating directory: $remote_dir"
+        mpremote mkdir "$remote_dir" 2>/dev/null || true
+    fi
 
-# Upload slime/ (excluding simulator files)
-echo "→ Creating slime/ directory structure..."
-mpremote mkdir slime 2>/dev/null || true
-mpremote mkdir slime/devices 2>/dev/null || true
-mpremote mkdir slime/drivers 2>/dev/null || true
-mpremote mkdir slime/drivers/display 2>/dev/null || true
-mpremote mkdir slime/drivers/input 2>/dev/null || true
+    # Upload files in this directory
+    for item in "$local_dir"/*; do
+        if [ ! -e "$item" ]; then
+            continue  # Skip if doesn't exist
+        fi
 
-echo "→ Uploading slime core..."
-mpremote cp slime/__init__.py :slime/
-mpremote cp slime/system.py :slime/
-mpremote cp slime/app.py :slime/
-mpremote cp slime/logger.py :slime/
+        local basename=$(basename "$item")
+        local remote_path="${remote_dir:+$remote_dir/}$basename"
 
-echo "→ Uploading slime/devices..."
-mpremote cp slime/devices/__init__.py :slime/devices/
-mpremote cp slime/devices/base.py :slime/devices/
-mpremote cp slime/devices/pico_calc.py :slime/devices/
+        # Check if should exclude
+        if should_exclude "$item"; then
+            continue
+        fi
 
-echo "→ Uploading slime/drivers..."
-mpremote cp slime/drivers/__init__.py :slime/drivers/
+        if [ -f "$item" ]; then
+            # It's a file - upload it
+            echo "  → $item"
+            if [ -n "$remote_dir" ]; then
+                mpremote cp "$item" ":$remote_dir/"
+            else
+                mpremote cp "$item" :
+            fi
+        elif [ -d "$item" ]; then
+            # It's a directory - recurse
+            upload_directory "$item" "$remote_path"
+        fi
+    done
+}
 
-echo "→ Uploading slime/drivers/display..."
-mpremote cp slime/drivers/display/__init__.py :slime/drivers/display/
-mpremote cp slime/drivers/display/abstract.py :slime/drivers/display/
-mpremote cp slime/drivers/display/pico_calc_display.py :slime/drivers/display/
+# Upload root files (main.py, config.py)
+echo "→ Uploading root files..."
+for file in main.py config.py; do
+    if [ -f "$file" ]; then
+        echo "  → $file"
+        mpremote cp "$file" :
+    fi
+done
 
-echo "→ Uploading slime/drivers/input..."
-mpremote cp slime/drivers/input/__init__.py :slime/drivers/input/
-mpremote cp slime/drivers/input/abstract.py :slime/drivers/input/
-mpremote cp slime/drivers/input/pico_calc_keyboard.py :slime/drivers/input/
+# Upload lib/ directory
+if [ -d "lib" ]; then
+    echo ""
+    echo "→ Uploading lib/..."
+    upload_directory "lib" "lib"
+fi
+
+# Upload apps/ directory
+if [ -d "apps" ]; then
+    echo ""
+    echo "→ Uploading apps/..."
+    upload_directory "apps" "apps"
+fi
+
+# Upload slime/ directory
+if [ -d "slime" ]; then
+    echo ""
+    echo "→ Uploading slime/..."
+    upload_directory "slime" "slime"
+fi
 
 echo ""
 echo "============================================"
