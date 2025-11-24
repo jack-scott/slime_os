@@ -74,6 +74,7 @@ class Launcher(App):
 
             except Exception as e:
                 print(f"[Launcher] Failed to import {module_name}: {e}")
+                self.sys.log.error(f"Launcher: Failed to import {module_name}: {e}")
 
         # Sort by name
         apps.sort(key=lambda app: app.name)
@@ -86,6 +87,7 @@ class Launcher(App):
         self.sys.log.info("Launcher: Discovering apps")
         self.apps = self.discover_apps()
         self.sys.log.info(f"Launcher: Found {len(self.apps)} apps")
+        self.need_update = True
 
         # Handle case of no apps
         if not self.apps:
@@ -145,6 +147,7 @@ class Launcher(App):
 
         # Draw title
         self.sys.draw_text("SLIME OS", 10, 10, scale=2, color=(255, 255, 0))
+            # Update display
 
         # Draw device name and memory
         mem = self.sys.memory_info()

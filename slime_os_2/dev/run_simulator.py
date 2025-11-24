@@ -46,21 +46,15 @@ def run_simulator():
     print("=" * 60)
 
     # Verify device is set to simulator
-    if DEVICE != "simulator":
-        print(f"WARNING: DEVICE is set to '{DEVICE}', not 'simulator'")
-        print(f"Edit config.py and set: DEVICE = \"simulator\"")
-        print()
-        response = input("Continue anyway? [y/N]: ")
-        if response.lower() != 'y':
-            return
+    device = "simulator"
 
     # Load device
-    print(f"Loading device: {DEVICE}")
+    print(f"Loading device: {device}")
     try:
-        device = get_device(DEVICE)
+        device = get_device(device)
         print(f"Device: {device.name}")
     except Exception as e:
-        print(f"ERROR: Failed to load device '{DEVICE}': {e}")
+        print(f"ERROR: Failed to load device '{device}': {e}")
         return
 
     # Create system

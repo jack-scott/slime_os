@@ -9,7 +9,7 @@ from .abstract import AbstractDisplay
 import st7789
 import framebuf
 from machine import SPI, Pin
-
+import gc
 # Import font - romanp is the standard 8x8 font
 try:
     import romanp as font
@@ -117,29 +117,32 @@ class PicoCalcDisplay(AbstractDisplay):
             framebuf.RGB565
         )
         self.fbuf.fill(0)  # Clear framebuffer
+        self.text_queue = []
+
 
     def set_pen(self, r, g, b):
         """Set drawing color"""
-        self.set_pen_fb(r,g,b)
+        self._set_pen_fb(r,g,b)
+        self.current_pen = st7789.color565(r, g, b)
 
     def rectangle(self, x, y, w, h):
         """Draw filled rectangle"""
-        self.rectangle_fb(x,y,w,h)
+        self._rectangle_fb(x,y,w,h)
 
     def pixel(self, x, y):
         """Draw single pixel"""
-        self.pixel_fb(x,y)
+        self._pixel_fb(x,y)
 
     def line(self, x1, y1, x2, y2):
         """Draw line"""
-        self.line_fb(x1,y1,x2,y2)
+        self._line_fb(x1,y1,x2,y2)
 
     def text(self, text, x, y, scale=1):
         """Draw text"""
         # pass
         if self.font is None:
             return  # No font available
-        self.display.draw(self.font, text, x, y, self.current_pen, scale)
+        self._queue_text(text, x, y, self.current_pen, scale)
 
     def measure_text(self, text, scale=1):
         """Measure text width"""
@@ -154,30 +157,40 @@ class PicoCalcDisplay(AbstractDisplay):
         Note: Currently drawing directly to display, so this is a no-op.
         Framebuffer methods (below) can be used for improved performance.
         """
-        self.blit_framebuffer()
+        self._blit_framebuffer()
+        # Draw queued text
+        for text, x, y, color, scale in self.text_queue:
+            self.display.draw(self.font, text, x, y, color, scale)
+        
+        self.text_queue.clear()
 
     # ========================================================================
     # Framebuffer methods (optional, for performance)
     # ========================================================================
 
-    def set_pen_fb(self, r, g, b):
+    def _queue_text(self, text, x, y, color, scale):
+        self.text_queue.append((text, x, y, color, scale))
+        print(f"Queued text: {text}, {x}, {y}, {color}, {scale}")
+        print(f"Remaining ram: {gc.mem_free()}")
+
+    def _set_pen_fb(self, r, g, b):
         """Set pen color for framebuffer drawing"""
         msb_colour = st7789.color565(r, g, b)
         lsb_colour = (msb_colour >> 8) | ((msb_colour & 0xFF) << 8)
         self.current_pen_fb = lsb_colour
 
-    def rectangle_fb(self, x, y, w, h):
+    def _rectangle_fb(self, x, y, w, h):
         """Draw filled rectangle to framebuffer"""
         self.fbuf.rect(x, y, w, h, self.current_pen_fb, 1)
 
-    def pixel_fb(self, x, y):
+    def _pixel_fb(self, x, y):
         """Draw pixel to framebuffer"""
         self.fbuf.pixel(x, y, self.current_pen_fb)
 
-    def line_fb(self, x1, y1, x2, y2):
+    def _line_fb(self, x1, y1, x2, y2):
         """Draw line to framebuffer"""
         self.fbuf.line(x1, y1, x2, y2, self.current_pen_fb)
 
-    def blit_framebuffer(self, x=0, y=0):
+    def _blit_framebuffer(self, x=0, y=0):
         """Blit framebuffer to display at position"""
         return self.display.blit_buffer(self.fbuf, x, y, self.fbuf_w, self.fbuf_h)
