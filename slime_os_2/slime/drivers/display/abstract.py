@@ -104,3 +104,18 @@ class AbstractDisplay:
         For buffered displays, this copies the buffer to the screen.
         """
         raise NotImplementedError("Subclasses must implement update()")
+
+    def reset(self):
+        """
+        Reset display state - clear all buffers and queues.
+
+        This should clear:
+        - The display itself (to black)
+        - Any framebuffers
+        - Any text/drawing queues
+        - Any cached state
+
+        This is called during app transitions to ensure clean state.
+        Default implementation does nothing (override if needed).
+        """
+        pass

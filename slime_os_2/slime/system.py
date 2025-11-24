@@ -173,6 +173,21 @@ class System:
         """Update display - flip buffer to screen"""
         self.display.update()
 
+    def reset_display(self):
+        """
+        Reset display to clean state.
+
+        This clears:
+        - The display itself (to black)
+        - Framebuffers
+        - Text/drawing queues
+        - Any cached display state
+
+        Called automatically during app transitions.
+        Apps can also call this manually if needed.
+        """
+        self.display.reset()
+
     # ========================================================================
     # Input API
     # ========================================================================
@@ -267,6 +282,7 @@ class System:
             # Create app instance
             app = current_app_class(self)
             app_generator = None
+            exit_reason = 'normal'
 
             # Clear keyboard state to prevent stale key presses
             if self._input:
@@ -278,6 +294,14 @@ class System:
                     pass  # Hardware keyboards may not have clear_state
 
             try:
+                # Call on_enter hook
+                self.log.debug(f"Calling on_enter for {app.name if hasattr(app, 'name') else 'app'}")
+                try:
+                    app.on_enter()
+                except Exception as e:
+                    self.log.error(f"Error in on_enter: {e}")
+                    # Continue anyway - don't crash just because on_enter failed
+
                 # Start app generator
                 self.log.debug(f"Creating generator for {app.name if hasattr(app, 'name') else 'app'}")
                 app_generator = app.run()
@@ -305,10 +329,12 @@ class System:
                             result = e.value
                             # Check if it's a launch command
                             if isinstance(result, tuple) and result[0] == 'launch':
+                                exit_reason = 'launch'
                                 current_app_class = result[1]
                                 self.log.info(f"Launching {current_app_class.name if hasattr(current_app_class, 'name') else 'App'}")
                                 break
                         # Otherwise just exit normally
+                        exit_reason = 'normal'
                         self.log.info("App exited normally")
                         current_app_class = initial_app_class
                         break
@@ -317,14 +343,29 @@ class System:
                     if result and isinstance(result, tuple):
                         if result[0] == 'launch':
                             # App wants to launch another app
+                            exit_reason = 'launch'
                             current_app_class = result[1]
                             self.log.info(f"Launching {current_app_class.name if hasattr(current_app_class, 'name') else 'App'}")
                             break  # Exit app loop, will launch new app
 
+                # Call on_exit hook (only if normal exit, not crash)
+                self.log.debug(f"Calling on_exit({exit_reason})")
+                try:
+                    app.on_exit(reason=exit_reason)
+                except Exception as e:
+                    self.log.error(f"Error in on_exit: {e}")
+
             except KeyboardInterrupt:
                 # User interrupted (Ctrl+C)
                 self.log.info("Interrupted by user")
+                exit_reason = 'interrupt'
                 current_app_class = initial_app_class
+
+                # Call on_exit for interrupt
+                try:
+                    app.on_exit(reason=exit_reason)
+                except Exception as e:
+                    self.log.error(f"Error in on_exit: {e}")
 
             except Exception as e:
                 # App crashed with unhandled exception
@@ -337,10 +378,20 @@ class System:
                 )
 
                 # Return to launcher
+                exit_reason = 'crash'
                 current_app_class = initial_app_class
+                # Note: on_exit NOT called on crash, only on_cleanup
 
             finally:
-                # Always cleanup
+                # Call on_cleanup hook (ALWAYS called, even on crash)
+                self.log.debug("Calling on_cleanup")
+                try:
+                    app.on_cleanup()
+                except Exception as e:
+                    self.log.error(f"Error in on_cleanup: {e}")
+                    # Continue anyway - don't crash during cleanup
+
+                # Always cleanup resources
                 if app_generator:
                     try:
                         app_generator.close()
@@ -363,6 +414,7 @@ class System:
             error: Error message
         """
         try:
+            self.reset_display()
             self.clear((128, 0, 0))  # Dark red
             self.draw_text("APP CRASHED", 10, 10, scale=2, color=(255, 255, 255))
             self.draw_text(f"App: {app_name}", 10, 40, scale=1, color=(255, 255, 255))

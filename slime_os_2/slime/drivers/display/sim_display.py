@@ -141,6 +141,14 @@ class SimDisplay(AbstractDisplay):
 
         # Note: Events are processed by SimKeyboard driver to avoid consuming them here
 
+    def reset(self):
+        """
+        Reset display state - clear surface to black.
+
+        This ensures a clean state for app transitions.
+        """
+        self.surface.fill((0, 0, 0))
+
     def cleanup(self):
         """Cleanup pygame resources"""
         pygame.quit()

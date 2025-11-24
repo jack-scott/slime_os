@@ -161,8 +161,21 @@ class PicoCalcDisplay(AbstractDisplay):
         # Draw queued text
         for text, x, y, color, scale in self.text_queue:
             self.display.draw(self.font, text, x, y, color, scale)
-        
+
         self.text_queue.clear()
+
+    def reset(self):
+        """
+        Reset display state - clear framebuffer and text queue.
+
+        This ensures a clean state for app transitions.
+        """
+        # Clear framebuffer to black
+        self.fbuf.fill(0)
+
+        # Clear text queue
+        self.text_queue.clear()
+
 
     # ========================================================================
     # Framebuffer methods (optional, for performance)

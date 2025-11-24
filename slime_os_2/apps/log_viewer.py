@@ -92,10 +92,9 @@ class LogViewerApp(App):
             else:  # INFO
                 color = (255, 255, 255)  # White
 
-            # Wrap long messages
-            wrapped_message = textwrap.fill(message, width=38)
-            for line in wrapped_message.split("\n"):
-                self.sys.draw_text(f"{level[0]}: {line}", 5, y, scale=1, color=color)
+            # Truncate long messages (simple approach for MicroPython)
+            display_message = message if len(message) <= 36 else message[:33] + "..."
+            self.sys.draw_text(f"{level[0]}: {display_message}", 5, y, scale=1, color=color)
             y += line_height
 
             if y > self.sys.height - 40:
