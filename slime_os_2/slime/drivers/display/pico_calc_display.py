@@ -6,17 +6,13 @@ Uses framebuffer for improved performance
 """
 
 from .abstract import AbstractDisplay
+from .microfont import MicroFont
 import st7789
 import framebuf
 from machine import SPI, Pin
 import gc
-# Import font - romanp is the standard 8x8 font
-try:
-    import romanp as font
-except ImportError:
-    print("[Display] Warning: romanp font not found, text rendering may fail")
-    font = None
 
+   
 
 class PicoCalcDisplay(AbstractDisplay):
     """
@@ -100,24 +96,34 @@ class PicoCalcDisplay(AbstractDisplay):
         self.display.on()
         self.display.fill(0)  # Clear to black
 
-        # Font
-        self.font = font
-
         # Current pen color (RGB565 format)
         self.current_pen = st7789.color565(255, 255, 255)  # White
 
         # Framebuffer for improved performance
-        # 320x100 pixels = 64KB (fits in RAM)
+        # 320x320 pixels = 204,800 bytes (200KB)
         self.fbuf_w = 320
         self.fbuf_h = 320
+        self.fb_colour = framebuf.RGB565
         self.fbuf = framebuf.FrameBuffer(
             bytearray(self.fbuf_w * self.fbuf_h * 2),
             self.fbuf_w,
             self.fbuf_h,
-            framebuf.RGB565
+            self.fb_colour
         )
         self.fbuf.fill(0)  # Clear framebuffer
         self.text_queue = []
+
+        # Construct path to font file relative to this module
+        import os
+        font_dir = os.path.dirname(__file__) if '__file__' in dir() else '/slime/drivers/display'
+        font_1_path = f"{font_dir}/victor:B:12.mfnt"
+        font_2_path = f"{font_dir}/victor:B:18.mfnt"
+        font_3_path = f"{font_dir}/victor:B:32.mfnt"
+        # Disable character caching to save memory - only cache index
+        self.fonts = [MicroFont(font_1_path, cache_index=True, cache_chars=False),
+                    MicroFont(font_2_path, cache_index=True, cache_chars=False),
+                    MicroFont(font_3_path, cache_index=True, cache_chars=False)]
+        self.avail_fonts = len(self.fonts)
 
 
     def set_pen(self, r, g, b):
@@ -140,15 +146,20 @@ class PicoCalcDisplay(AbstractDisplay):
     def text(self, text, x, y, scale=1):
         """Draw text"""
         # pass
-        if self.font is None:
-            return  # No font available
-        self._queue_text(text, x, y, self.current_pen, scale)
+        if scale > self.avail_fonts:
+            choosen_font = 0
+        else:
+            choosen_font = scale - 1
+        self.fonts[choosen_font].write(text, self.fbuf, self.fb_colour, self.fbuf_w, self.fbuf_h, x, y, self.current_pen_fb, rot=0, x_spacing=0, y_spacing=0)
+        # self._queue_text(text, x, y, self.current_pen, scale)
 
     def measure_text(self, text, scale=1):
         """Measure text width"""
-        if self.font is None:
-            return 0
-        return self.display.draw_len(self.font, text, scale)
+        if scale > self.avail_fonts:
+            choosen_font = 0
+        else:
+            choosen_font = scale - 1
+        return self.fonts[choosen_font].max_width * len(text)
 
     def update(self):
         """
@@ -158,11 +169,13 @@ class PicoCalcDisplay(AbstractDisplay):
         Framebuffer methods (below) can be used for improved performance.
         """
         self._blit_framebuffer()
+        # Periodic garbage collection to prevent fragmentation
+        gc.collect()
         # Draw queued text
-        for text, x, y, color, scale in self.text_queue:
-            self.display.draw(self.font, text, x, y, color, scale)
+        # for text, x, y, color, scale in self.text_queue:
+        #     self.display.draw(self.font, text, x, y, color, scale)
 
-        self.text_queue.clear()
+        # self.text_queue.clear()
 
     def reset(self):
         """
@@ -174,7 +187,7 @@ class PicoCalcDisplay(AbstractDisplay):
         self.fbuf.fill(0)
 
         # Clear text queue
-        self.text_queue.clear()
+        # self.text_queue.clear()
 
 
     # ========================================================================

@@ -14,53 +14,79 @@ class LogViewerApp(App):
     name = "Log Viewer"
     id = "log_viewer"
 
+    def on_cleanup(self):
+        """Clean up cached logs to free memory"""
+        super().on_cleanup()
+        if hasattr(self, 'cached_logs'):
+            self.cached_logs = []
+
     def run(self):
         """Main app loop"""
         self.scroll_offset = 0
         self.lines_per_page = 16  # ~20 lines fit on 320px screen
         self.need_update = True
         self.last_log_count = 0
-        while True:
-            # Get recent logs
-            logs = self.sys.log.get_all()
+        # Cache logs - only copy when count changes
+        self.cached_logs = []
 
-            if len(logs) != self.last_log_count:
+        while True:
+            # Only get logs if count changed (avoid copying every frame)
+            current_log_count = len(self.sys.log.messages)
+            if current_log_count != self.last_log_count:
+                self.cached_logs = self.sys.log.get_all()
                 self.need_update = True
-                self.last_log_count = len(logs)
+                self.last_log_count = current_log_count
 
             # Handle input
             keys = self.sys.keys_pressed([
                 Keycode.UP_ARROW,
                 Keycode.DOWN_ARROW,
                 Keycode.C,
+                Keycode.M,
                 Keycode.Q
             ])
 
             if keys[Keycode.UP_ARROW]:
                 # Scroll up (show older logs)
-                max_scroll = max(0, len(logs) - self.lines_per_page)
+                max_scroll = max(0, len(self.cached_logs) - self.lines_per_page)
                 self.scroll_offset = min(self.scroll_offset + 3, max_scroll)
+                self.need_update = True
 
             if keys[Keycode.DOWN_ARROW]:
                 # Scroll down (show newer logs)
                 self.scroll_offset = max(0, self.scroll_offset - 3)
+                self.need_update = True
 
             if keys[Keycode.C]:
                 # Clear logs
                 self.sys.log.clear()
                 self.sys.log.info("Logs cleared by user")
+                self.cached_logs = self.sys.log.get_all()
                 self.scroll_offset = 0
+                self.need_update = True
+
+            if keys[Keycode.M]:
+                # Memory debug - add test lines and log memory usage
+                import gc
+                for i in range(10):
+                    self.sys.log.debug(f"Test log line {i + 1}")
+
+                # Log memory info
+                gc.collect()
+                mem = self.sys.memory_info()
+                self.sys.log.info(f"MEM: {mem['free']//1024}KB free, {mem['allocated']//1024}KB used ({mem['percent_used']:.1f}%)")
+
+                # Force cache update
+                self.cached_logs = self.sys.log.get_all()
+                self.last_log_count = len(self.sys.log.messages)
+                self.need_update = True
 
             if keys[Keycode.Q]:
                 # Exit
                 return
 
-            # Check if any key was pressed
-            if any(keys.values()):
-                self.need_update = True
-
             if self.need_update:
-                self._draw_ui(logs)
+                self._draw_ui(self.cached_logs)
                 self.need_update = False
             yield
 
@@ -92,18 +118,25 @@ class LogViewerApp(App):
             else:  # INFO
                 color = (255, 255, 255)  # White
 
-            # Truncate long messages (simple approach for MicroPython)
-            display_message = message if len(message) <= 36 else message[:33] + "..."
-            self.sys.draw_text(f"{level[0]}: {display_message}", 5, y, scale=1, color=color)
+            # Truncate long messages - use slice to avoid string concat
+            if len(message) > 36:
+                display_message = message[:33] + "..."
+            else:
+                display_message = message
+
+            # Format once and draw
+            line_text = f"{level[0]}: {display_message}"
+            self.sys.draw_text(line_text, 5, y, scale=1, color=color)
             y += line_height
 
             if y > self.sys.height - 40:
                 break
 
         # Controls at bottom
-        controls_y = self.sys.height - 30
+        controls_y = self.sys.height - 42
         self.sys.draw_text("[Up/Down] Scroll", 5, controls_y, scale=1, color=(200, 200, 200))
-        self.sys.draw_text("[C] Clear  [Q] Quit", 5, controls_y + 12, scale=1, color=(200, 200, 200))
+        self.sys.draw_text("[C] Clear  [M] Mem", 5, controls_y + 12, scale=1, color=(200, 200, 200))
+        self.sys.draw_text("[Q] Quit", 5, controls_y + 24, scale=1, color=(200, 200, 200))
 
         # Scroll indicator
         if self.scroll_offset > 0:

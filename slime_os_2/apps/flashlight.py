@@ -20,7 +20,26 @@ class FlashlightApp(App):
         self.sys.log.info("Flashlight starting")
         self.led_on = False  # Start with light on
         self.need_update = True
+
+        # Pre-create string constants to avoid allocations in loop
+        self.TEXT_ON = "FLASHLIGHT ON"
+        self.TEXT_OFF = "FLASHLIGHT OFF"
+        self.TEXT_TOGGLE = "[Enter] Toggle"
+        self.TEXT_QUIT = "[Q] Quit"
+
+        # Memory debugging - log every 60 frames
+        frame_count = 0
+        log_interval = 60
+
         while True:
+            frame_count += 1
+
+            # Log memory usage periodically
+            if frame_count % log_interval == 0:
+                import gc
+                gc.collect()
+                mem = self.sys.memory_info()
+                self.sys.log.debug(f"Flashlight frame {frame_count}: {mem['free']//1024}KB free, {mem['percent_used']:.1f}% used")
 
             keys = self.sys.keys_pressed([Keycode.ENTER, Keycode.Q])
             # Check if any key was pressed
@@ -49,12 +68,14 @@ class FlashlightApp(App):
         if self.led_on:
             # Light on - white screen
             self.sys.clear((255, 255, 255))
-            self.sys.draw_text("FLASHLIGHT ON", 20, 20, scale=3, color=(0, 0, 0))
+            self.sys.draw_text(self.TEXT_ON, 20, 20, scale=3, color=(0, 0, 0))
+            control_color = (128, 128, 128)
         else:
             # Light off - black screen
             self.sys.clear((0, 0, 0))
-            self.sys.draw_text("FLASHLIGHT OFF", 20, 20, scale=3)
+            self.sys.draw_text(self.TEXT_OFF, 20, 20, scale=3)
+            control_color = (255, 255, 255)
 
-        # Draw controls
-        self.sys.draw_text("[Enter] Toggle", 20, 100, scale=1, color=(128, 128, 128) if self.led_on else (255, 255, 255))
-        self.sys.draw_text("[Q] Quit", 20, 120, scale=1, color=(128, 128, 128) if self.led_on else (255, 255, 255))
+        # Draw controls - reuse pre-created strings
+        self.sys.draw_text(self.TEXT_TOGGLE, 20, 100, scale=1, color=control_color)
+        self.sys.draw_text(self.TEXT_QUIT, 20, 120, scale=1, color=control_color)
