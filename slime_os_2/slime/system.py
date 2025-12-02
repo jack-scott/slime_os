@@ -47,6 +47,10 @@ class System:
     and system services.
     """
 
+    # Toolbar configuration
+    TOOLBAR_HEIGHT = 16
+    TOOLBAR_ENABLED = True
+
     def __init__(self, device, watchdog_timeout=None):
         """
         Initialize the system.
@@ -60,6 +64,11 @@ class System:
         # Lazy-loaded drivers
         self._display = None
         self._input = None
+
+        # Toolbar state
+        self._toolbar_frame = 0
+        self._toolbar_update_interval = 30  # Update toolbar every 30 frames (~1 second at 30fps)
+        self._last_mem_free = 0  # Will be initialized on first update
 
         # Logger (print to stdout for simulator)
         print_logs = (device.name == "Simulator")
@@ -95,30 +104,34 @@ class System:
 
     @property
     def height(self):
-        """Get display height"""
+        """Get display height (excluding toolbar if enabled)"""
+        if self.TOOLBAR_ENABLED:
+            return self.device.display_height - self.TOOLBAR_HEIGHT
         return self.device.display_height
 
     def clear(self, color=(0, 0, 0)):
         """
-        Clear screen to color.
+        Clear screen to color (app area only, not toolbar).
 
         Args:
             color: RGB tuple (r, g, b)
         """
         self.display.set_pen(*color)
-        self.display.rectangle(0, 0, self.width, self.height)
+        y_offset = self.TOOLBAR_HEIGHT if self.TOOLBAR_ENABLED else 0
+        self.display.rectangle(0, y_offset, self.width, self.height)
 
     def draw_rect(self, x, y, w, h, color):
         """
         Draw filled rectangle.
 
         Args:
-            x, y: Position
+            x, y: Position (relative to app area)
             w, h: Size
             color: RGB tuple (r, g, b)
         """
+        y_offset = self.TOOLBAR_HEIGHT if self.TOOLBAR_ENABLED else 0
         self.display.set_pen(*color)
-        self.display.rectangle(x, y, w, h)
+        self.display.rectangle(x, y + y_offset, w, h)
 
     def draw_text(self, text, x, y, scale=1, color=(255, 255, 255)):
         """
@@ -126,35 +139,38 @@ class System:
 
         Args:
             text: String to draw
-            x, y: Position
+            x, y: Position (relative to app area)
             scale: Text scale (1, 2, 3, etc.)
             color: RGB tuple (r, g, b)
         """
+        y_offset = self.TOOLBAR_HEIGHT if self.TOOLBAR_ENABLED else 0
         self.display.set_pen(*color)
-        self.display.text(text, x, y, scale=scale)
+        self.display.text(text, x, y + y_offset, scale=scale)
 
     def draw_line(self, x1, y1, x2, y2, color):
         """
         Draw line.
 
         Args:
-            x1, y1: Start position
-            x2, y2: End position
+            x1, y1: Start position (relative to app area)
+            x2, y2: End position (relative to app area)
             color: RGB tuple (r, g, b)
         """
+        y_offset = self.TOOLBAR_HEIGHT if self.TOOLBAR_ENABLED else 0
         self.display.set_pen(*color)
-        self.display.line(x1, y1, x2, y2)
+        self.display.line(x1, y1 + y_offset, x2, y2 + y_offset)
 
     def draw_pixel(self, x, y, color):
         """
         Draw single pixel.
 
         Args:
-            x, y: Position
+            x, y: Position (relative to app area)
             color: RGB tuple (r, g, b)
         """
+        y_offset = self.TOOLBAR_HEIGHT if self.TOOLBAR_ENABLED else 0
         self.display.set_pen(*color)
-        self.display.pixel(x, y)
+        self.display.pixel(x, y + y_offset)
 
     def measure_text(self, text, scale=1):
         """
@@ -170,7 +186,17 @@ class System:
         return self.display.measure_text(text, scale)
 
     def update(self):
-        """Update display - flip buffer to screen"""
+        """Update display - flip buffer to screen and draw toolbar"""
+        # Update toolbar data periodically (not every frame)
+        self._toolbar_frame += 1
+        if self._toolbar_frame >= self._toolbar_update_interval:
+            self._update_toolbar_data()
+            self._toolbar_frame = 0
+
+        # Always draw toolbar (uses cached data)
+        self._draw_toolbar()
+
+        # Flip display buffer to screen
         self.display.update()
 
     def reset_display(self):
@@ -185,8 +211,15 @@ class System:
 
         Called automatically during app transitions.
         Apps can also call this manually if needed.
+
+        Note: The toolbar area is also cleared and will be redrawn on next update().
         """
         self.display.reset()
+
+        # Clear toolbar area explicitly
+        if self.TOOLBAR_ENABLED:
+            self.display.set_pen(0, 0, 0)
+            self.display.rectangle(0, 0, self.device.display_width, self.TOOLBAR_HEIGHT)
 
     # ========================================================================
     # Input API
@@ -247,6 +280,52 @@ class System:
             'total': total,
             'percent_used': percent_used
         }
+
+    def print_memory(self, label=""):
+        """Print memory info with a label (for debugging)"""
+        mem = self.memory_info()
+        print(f"[MEM {label}] Free: {mem['free']:,} | Allocated: {mem['allocated']:,} | {mem['percent_used']:.1f}% used")
+
+    # ========================================================================
+    # Toolbar
+    # ========================================================================
+
+    def _draw_toolbar(self):
+        """
+        Draw the system toolbar at the top of the screen.
+
+        Shows: SLIME OS | RAM usage
+        """
+        if not self.TOOLBAR_ENABLED:
+            return
+
+        # Draw toolbar background (dark gray)
+        self.display.set_pen(32, 32, 32)
+        self.display.rectangle(0, 0, self.device.display_width, self.TOOLBAR_HEIGHT)
+
+        # Draw "SLIME OS" on the left
+        self.display.set_pen(255, 255, 0)  # Yellow
+        self.display.text("SLIME OS", 2, 2, scale=1)
+
+        # Draw RAM usage on the right
+        # Update data if not initialized yet
+        if self._last_mem_free == 0:
+            self._update_toolbar_data()
+
+        mem_kb = self._last_mem_free // 1024
+        mem_text = f"{mem_kb}KB"
+        text_width = self.display.measure_text(mem_text, scale=1)
+
+        # Position from the right edge
+        x_pos = self.device.display_width - text_width - 2
+
+        self.display.set_pen(0, 255, 0)  # Green
+        self.display.text(mem_text, x_pos, 2, scale=1)
+
+    def _update_toolbar_data(self):
+        """Update toolbar data (called periodically, not every frame)"""
+        mem = self.memory_info()
+        self._last_mem_free = mem['free']
 
     # ========================================================================
     # App Lifecycle Management
