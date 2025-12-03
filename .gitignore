@@ -1,0 +1,3 @@
+.deploy_cache.json
+*.pyc
+*/__pycache__

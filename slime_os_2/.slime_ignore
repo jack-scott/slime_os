@@ -1,0 +1,33 @@
+# .slime_ignore
+# Files and directories to exclude from Pico deployment
+# Patterns are matched as substrings in the relative path
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+
+# Development files
+dev/*
+*.md
+README
+.slime_ignore
+
+# Version control
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+test
+tests
+*_test.py
