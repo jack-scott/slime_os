@@ -105,6 +105,22 @@ class AbstractDisplay:
         """
         raise NotImplementedError("Subclasses must implement update()")
 
+    def update_partial(self, x, y, w, h):
+        """
+        Update only a specific region of the display.
+
+        For buffered displays, this copies only the specified region
+        from the framebuffer to the screen. More efficient than full update.
+
+        Args:
+            x, y: Top-left corner of region to update
+            w, h: Width and height of region
+
+        Default implementation falls back to full update.
+        Override for better performance.
+        """
+        self.update()
+
     def reset(self):
         """
         Reset display state - clear all buffers and queues.

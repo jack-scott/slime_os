@@ -223,6 +223,39 @@ class SimDisplay(AbstractDisplay):
 
         # Note: Events are processed by SimKeyboard driver to avoid consuming them here
 
+    def update_partial(self, x, y, w, h):
+        """
+        Update only a specific region of the display.
+
+        Args:
+            x, y: Top-left corner of region to update
+            w, h: Width and height of region
+        """
+        # Clamp coordinates to screen bounds
+        x = max(0, min(x, self.width - 1))
+        y = max(0, min(y, self.height - 1))
+        w = min(w, self.width - x)
+        h = min(h, self.height - y)
+
+        if w <= 0 or h <= 0:
+            return
+
+        # Extract the region from the surface
+        region = self.surface.subsurface((x, y, w, h))
+
+        # Scale if needed and blit to window
+        if self.scale > 1:
+            scaled = pygame.transform.scale(
+                region,
+                (w * self.scale, h * self.scale)
+            )
+            self.window.blit(scaled, (x * self.scale, y * self.scale))
+        else:
+            self.window.blit(region, (x, y))
+
+        # Update only this region of the display
+        pygame.display.update((x * self.scale, y * self.scale, w * self.scale, h * self.scale))
+
     def reset(self):
         """
         Reset display state - clear surface to black.

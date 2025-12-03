@@ -61,12 +61,59 @@ class PicoCalcDevice(BaseDevice):
         # Lazy import
         from slime.drivers.input.pico_calc_keyboard import PicoCalcKeyboard
         from machine import I2C, Pin
+        import time
 
-        # Create I2C bus for keyboard
+        print("[Keyboard] Initializing keyboard driver...")
+
+        # Short delay before starting
+        time.sleep_ms(100)
+
+        # CRITICAL: Configure pins with pull-ups BEFORE creating I2C bus
+        # The Pico Calc keyboard needs internal pull-ups enabled on I2C lines
+        print("[Keyboard] Configuring I2C pins with pull-ups...")
+        scl_pin = Pin(self.KEYBOARD_SCL, Pin.OUT, Pin.PULL_UP)
+        sda_pin = Pin(self.KEYBOARD_SDA, Pin.OUT, Pin.PULL_UP)
+
+        # Small delay for pull-ups to stabilize
+        time.sleep_ms(50)
+
+        # Create I2C bus
+        print("[Keyboard] Creating I2C bus...")
         i2c = I2C(
             self.KEYBOARD_I2C_ID,
-            scl=Pin(self.KEYBOARD_SCL),
-            sda=Pin(self.KEYBOARD_SDA)
+            scl=scl_pin,
+            sda=sda_pin,
+            freq=100000  # 100kHz standard speed
         )
 
-        return PicoCalcKeyboard(i2c)
+        # Give I2C bus time to stabilize
+        time.sleep_ms(100)
+
+        # Scan for keyboard
+        print("[Keyboard] Scanning for keyboard controller...")
+        devices = i2c.scan()
+        print(f"[Keyboard] Found I2C devices: {devices}")
+
+        if PicoCalcKeyboard.KEYBOARD_ADDR in devices:
+            print(f"[Keyboard] ✓ Keyboard found at address {PicoCalcKeyboard.KEYBOARD_ADDR}")
+        else:
+            print(f"[Keyboard] WARNING: Keyboard not found at address {PicoCalcKeyboard.KEYBOARD_ADDR}")
+            print("[Keyboard] Keyboard will not respond to input")
+
+        # Create keyboard driver and drain initial queue
+        kbd = PicoCalcKeyboard(i2c)
+
+        # Drain keyboard event queue (like reference implementation)
+        print("[Keyboard] Draining initial event queue...")
+        drain_count = 0
+        for _ in range(100):  # Max 100 events to drain
+            if kbd._read_raw_data() == 0:
+                break
+            drain_count += 1
+            time.sleep_ms(10)
+
+        if drain_count > 0:
+            print(f"[Keyboard] Drained {drain_count} initial events")
+
+        print("[Keyboard] Initialization complete")
+        return kbd

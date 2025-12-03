@@ -69,7 +69,10 @@ class System:
         self._toolbar_frame = 0
         self._toolbar_update_interval = 30  # Update toolbar every 30 frames (~1 second at 30fps)
         self._last_mem_free = 0  # Will be initialized on first update
-        self._toolbar_counter = 0
+        self._last_fps = 0
+        self._fps_frame_times = []  # Track last N frame times for FPS calculation
+        self._toolbar_update_count = 0  # Counter for toolbar updates
+        self._last_cpu_freq = 0  # CPU frequency in MHz
         # Logger (print to stdout for simulator)
         print_logs = (device.name == "Simulator")
         self.log = Logger(max_messages=200, print_to_stdout=print_logs)
@@ -291,7 +294,7 @@ class System:
         """
         Draw the system toolbar at the top of the screen.
 
-        Shows: SLIME OS | RAM usage
+        Shows: CPU MHz | FPS | RAM usage #counter
         """
         if not self.TOOLBAR_ENABLED:
             return
@@ -299,33 +302,90 @@ class System:
         # Draw toolbar background (dark gray)
         self.display.set_pen(32, 32, 32)
         self.display.rectangle(0, 0, self.device.display_width, self.TOOLBAR_HEIGHT)
-
-        # Draw "SLIME OS" on the left
         self.display.set_pen(255, 255, 0)  # Yellow
         self.display.text("SLIME OS", 2, 2, scale=1)
 
-        # Draw RAM usage on the right
         # Update data if not initialized yet
         if self._last_mem_free == 0:
             self._update_toolbar_data()
 
-        mem_kb = self._last_mem_free // 1024
-        mem_text = f"{mem_kb}KB"
-        text_width = self.display.measure_text(mem_text, scale=1)
-        self._toolbar_counter += 1
-        counter_text_fast = f"fast:{self._toolbar_counter}"
-        fast_width = self.display.measure_text(counter_text_fast, scale=1)
+        #Cpu freq
+        cpu_text = f"{self._last_cpu_freq}MHz"
+        self.display.set_pen(255, 255, 0)  # Yellow
 
+        # Draw RAM usage and update counter on the right
+        mem_kb = self._last_mem_free // 1024
+        update_counter = self._toolbar_update_count
+        stats_text = f"{cpu_text} | {mem_kb}KB | #{update_counter}"
+        stats_text_width = self.display.measure_text(stats_text, scale=1)
         # Position from the right edge
-        x_pos = self.device.display_width - text_width - 2
+        stats_x_pos = self.device.display_width - stats_text_width - 2
         self.display.set_pen(0, 255, 0)  # Green
-        self.display.text(mem_text, x_pos, 2, scale=1)
-        self.display.text(counter_text_fast, x_pos - fast_width - 2 , 2, scale=1)
+        self.display.text(stats_text, stats_x_pos, 2, scale=1)
+
+        # Draw FPS from the right
+        fps_text = f"{self._last_fps}FPS |"
+        fps_width = self.display.measure_text(fps_text, scale=1)
+        fps_x = stats_x_pos - fps_width - 1
+        # Color FPS based on performance
+        if self._last_fps >= 28:
+            fps_color = (0, 255, 0)  # Green - good
+        elif self._last_fps >= 20:
+            fps_color = (255, 255, 0)  # Yellow - ok
+        else:
+            fps_color = (255, 0, 0)  # Red - slow
+
+        self.display.set_pen(*fps_color)
+        self.display.text(fps_text, fps_x, 2, scale=1)
 
     def _update_toolbar_data(self):
         """Update toolbar data (called periodically, not every frame)"""
+        # Increment update counter
+        self._toolbar_update_count += 1
+
+        # Update memory info
         mem = self.memory_info()
         self._last_mem_free = mem['free']
+
+        # Update CPU frequency
+        try:
+            import machine
+            freq_hz = machine.freq()
+            self._last_cpu_freq = freq_hz // 1_000_000  # Convert to MHz
+        except:
+            self._last_cpu_freq = 0  # Not available
+
+        # Calculate FPS from recent frame times
+        if len(self._fps_frame_times) >= 2:
+            # Average time between frames over last N frames
+            total_time = self._fps_frame_times[-1] - self._fps_frame_times[0]
+            num_frames = len(self._fps_frame_times) - 1
+            if total_time > 0:
+                avg_fps = num_frames / total_time
+                self._last_fps = int(avg_fps)
+            else:
+                self._last_fps = 0
+        else:
+            self._last_fps = 0
+
+    def update_toolbar(self):
+        """
+        Update only the toolbar region of the display.
+
+        This is more efficient than a full screen update since it only
+        redraws and updates the toolbar area.
+
+        Call this when you want to refresh the toolbar without updating
+        the rest of the screen.
+        """
+        if not self.TOOLBAR_ENABLED:
+            return
+
+        # Redraw toolbar
+        self._draw_toolbar()
+
+        # Update only the toolbar region
+        self.display.update_partial(0, 0, self.device.display_width, self.TOOLBAR_HEIGHT)
 
     # ========================================================================
     # App Lifecycle Management
@@ -336,18 +396,27 @@ class System:
         Run system maintenance tasks.
 
         Called every frame after the app yields. This is where the OS does its work:
+        - Track FPS
         - Update toolbar data (periodically)
         - Future: Check for system events, update status indicators, etc.
 
         This runs independently of the app - even if the app doesn't call update().
         """
+        # Track frame times for FPS calculation
+        current_time = time.time()
+        self._fps_frame_times.append(current_time)
+
+        # Keep only last 30 frame times (~1 second at 30 FPS)
+        if len(self._fps_frame_times) > 60:
+            self._fps_frame_times.pop(0)
+
         # Update toolbar data periodically (not every frame)
         self._toolbar_frame += 1
         if self._toolbar_frame >= self._toolbar_update_interval:
             self._update_toolbar_data()
             self._draw_toolbar()
             self._toolbar_frame = 0
-        self.update(full_update=False)
+        self.update_toolbar()
 
     def _prepare_app_for_launch(self):
         """
@@ -358,7 +427,7 @@ class System:
         if self._input:
             try:
                 self._input.clear_state()
-                time.sleep(0.1)  # Small delay to ensure key release is processed
+                time.sleep(0.05)  # Small delay to ensure key release is processed
             except AttributeError:
                 pass  # Hardware keyboards may not have clear_state
 
@@ -367,7 +436,7 @@ class System:
         Run a single frame of the app.
 
         This is the core of the event loop:
-        1. Limit frame rate (30 FPS)
+        1. Cap frame rate (max 30 FPS) - only sleep if running too fast
         2. Feed watchdog
         3. Call app generator (app runs one iteration and yields back)
         4. Run system tasks (toolbar updates, etc.)
@@ -382,13 +451,22 @@ class System:
             - exit_reason: 'normal', 'launch', etc. (only valid if continue_running=False)
             - next_app_class: Class to launch next (only valid if exit_reason='launch')
         """
-        # 1. FRAME RATE LIMITING - Keep consistent 30 FPS
+        # 1. FRAME RATE LIMITING - Cap at max 30 FPS, but don't force it
+        #    This allows slow hardware to run at natural speed
+        #    Only sleep if we're running faster than target
         target_fps = 30
-        frame_time = 1.0 / target_fps
+        min_frame_time = 1.0 / target_fps  # 33ms minimum between frames
+
         current_time = time.time()
         elapsed = current_time - frame_state['last_frame_time']
-        if elapsed < frame_time:
-            time.sleep(frame_time - elapsed)
+
+        # Only sleep if we finished early (running too fast)
+        if elapsed < min_frame_time:
+            sleep_time = min_frame_time - elapsed
+            # Only sleep if significant time remains (avoid tiny sleeps)
+            if sleep_time > 0.001:  # 1ms threshold
+                time.sleep(sleep_time)
+
         frame_state['last_frame_time'] = time.time()
 
         # 2. FEED WATCHDOG - Prevent hardware reset

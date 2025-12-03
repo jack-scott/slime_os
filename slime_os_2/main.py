@@ -43,7 +43,7 @@ def main():
 
 if __name__ == '__main__':
     import time
-    print("Waiting 3 seconds before booting...")
-    time.sleep(3)
+    print("Waiting 2 seconds before booting...")
+    time.sleep(2)
     print("Booting...")
     main()

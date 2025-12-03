@@ -7,7 +7,7 @@ Uses framebuffer for improved performance
 
 from .abstract import AbstractDisplay
 from .microfont import MicroFont
-import st7789
+import st7789 #https://github.com/devbis/st7789_mpy
 import framebuf
 from machine import SPI, Pin
 import gc
@@ -48,7 +48,8 @@ class PicoCalcDisplay(AbstractDisplay):
             # Interface configuration
             (b'\x3A\x55',),  # 16-bit color
             (b'\xB0\x00',),  # Interface mode control
-            (b'\xB1\xA0',),  # Frame rate control
+            # (b'\xB1\xA0',),  # Frame rate control (intial settings)
+            (b'\xB1\xD0\x11',), # Frame rate control 60Hz
             # Display features
             (b'\x21',),  # Display inversion ON
             (b'\xB4\x02',),  # Display inversion control
@@ -69,9 +70,20 @@ class PicoCalcDisplay(AbstractDisplay):
             (0x48, 320, 320, 0, 0),
             (0x28, 320, 320, 0, 0),
         ]
+        # Framebuffer for improved performance
+        # 320x320 pixels = 204,800 bytes (200KB)
+        self.fbuf_w = 320
+        self.fbuf_h = 320
+        self.fb_colour = framebuf.RGB565
+        self.fbuf = framebuf.FrameBuffer(
+            bytearray(self.fbuf_w * self.fbuf_h * 2),
+            self.fbuf_w,
+            self.fbuf_h,
+            self.fb_colour
+        )
 
         # Initialize SPI
-        spi = SPI(1, baudrate=80_000_000, sck=Pin(sck), mosi=Pin(mosi))
+        spi = SPI(1, baudrate=40_000_000, sck=Pin(sck), mosi=Pin(mosi))
 
         # Initialize ST7789 driver
         self.display = st7789.ST7789(
@@ -99,17 +111,6 @@ class PicoCalcDisplay(AbstractDisplay):
         # Current pen color (RGB565 format)
         self.current_pen = st7789.color565(255, 255, 255)  # White
 
-        # Framebuffer for improved performance
-        # 320x320 pixels = 204,800 bytes (200KB)
-        self.fbuf_w = 320
-        self.fbuf_h = 320
-        self.fb_colour = framebuf.RGB565
-        self.fbuf = framebuf.FrameBuffer(
-            bytearray(self.fbuf_w * self.fbuf_h * 2),
-            self.fbuf_w,
-            self.fbuf_h,
-            self.fb_colour
-        )
         self.fbuf.fill(0)  # Clear framebuffer
         self.text_queue = []
 
@@ -169,13 +170,16 @@ class PicoCalcDisplay(AbstractDisplay):
         Framebuffer methods (below) can be used for improved performance.
         """
         self._blit_framebuffer()
-        # Periodic garbage collection to prevent fragmentation
-        gc.collect()
-        # Draw queued text
-        # for text, x, y, color, scale in self.text_queue:
-        #     self.display.draw(self.font, text, x, y, color, scale)
 
-        # self.text_queue.clear()
+    def update_partial(self, x, y, w, h):
+        """
+        Update only a specific region of the display.
+
+        Args:
+            x, y: Top-left corner of region to update
+            w, h: Width and height of region
+        """
+        self._blit_framebuffer_partial(x, y, w, h)
 
     def reset(self):
         """
@@ -220,3 +224,43 @@ class PicoCalcDisplay(AbstractDisplay):
     def _blit_framebuffer(self, x=0, y=0):
         """Blit framebuffer to display at position"""
         return self.display.blit_buffer(self.fbuf, x, y, self.fbuf_w, self.fbuf_h)
+
+    def _blit_framebuffer_partial(self, x, y, w, h):
+        """
+        Blit only a specific region of the framebuffer to display.
+
+        Creates a temporary framebuffer view of the region and blits it.
+
+        Args:
+            x, y: Top-left corner of region
+            w, h: Width and height of region
+        """
+        # Clamp coordinates to framebuffer bounds
+        x = max(0, min(x, self.fbuf_w - 1))
+        y = max(0, min(y, self.fbuf_h - 1))
+        w = min(w, self.fbuf_w - x)
+        h = min(h, self.fbuf_h - y)
+
+        if w <= 0 or h <= 0:
+            return
+
+        # Calculate byte offset in framebuffer (RGB565 = 2 bytes per pixel)
+        bytes_per_row = self.fbuf_w * 2
+        offset = (y * bytes_per_row) + (x * 2)
+
+        # Create a framebuffer view of the region
+        # For RGB565, we need to extract the rectangular region
+        region_buf = bytearray(w * h * 2)
+
+        # Copy rows from main framebuffer to region buffer
+        src_buf = memoryview(self.fbuf)
+        for row in range(h):
+            src_offset = offset + (row * bytes_per_row)
+            dst_offset = row * w * 2
+            region_buf[dst_offset:dst_offset + w * 2] = src_buf[src_offset:src_offset + w * 2]
+
+        # Create temporary framebuffer for the region
+        region_fb = framebuf.FrameBuffer(region_buf, w, h, self.fb_colour)
+
+        # Blit the region to display at its position
+        return self.display.blit_buffer(region_fb, x, y, w, h)

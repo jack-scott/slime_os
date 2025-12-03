@@ -10,6 +10,9 @@ import json
 import hashlib
 import subprocess
 import argparse
+import serial
+import serial.tools.list_ports
+import time
 from pathlib import Path
 from typing import Dict, Set, List
 
@@ -97,6 +100,43 @@ class PicoDeployer:
                                   timeout=5)
             return result.returncode == 0
         except Exception:
+            return False
+
+    def find_pico_port(self) -> str:
+        """Find the serial port for the Pico"""
+        ports = serial.tools.list_ports.comports()
+        for port in ports:
+            if '2e8a' in port.hwid.lower() or 'Pico' in port.description:
+                return port.device
+        return None
+
+    def force_stop(self) -> bool:
+        """Force interrupt the running program"""
+        print("Forcing interrupt to stop running code...")
+
+        port = self.find_pico_port()
+        if not port:
+            print("⚠ Could not find Pico serial port for interrupt")
+            return False
+
+        try:
+            ser = serial.Serial(port, 115200, timeout=1)
+
+            # Send break
+            ser.send_break(duration=0.2)
+            time.sleep(0.1)
+
+            # Send multiple Ctrl-C
+            for _ in range(10):
+                ser.write(b'\x03')
+                time.sleep(0.03)
+
+            ser.close()
+            print("✓ Interrupted successfully")
+            return True
+
+        except Exception as e:
+            print(f"⚠ Interrupt failed: {e}")
             return False
 
     def mkdir_remote(self, remote_path: str):
@@ -210,6 +250,11 @@ class PicoDeployer:
             print("Please connect your Pico via USB")
             sys.exit(1)
         print("✓ Pico detected")
+        print()
+
+        # Force interrupt running code
+        self.force_stop()
+        time.sleep(1)  # Wait for device to settle
         print()
 
         if self.clean:

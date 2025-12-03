@@ -6,6 +6,7 @@ Protocol: 16-bit value with action code (press/release) and key code
 """
 
 from .abstract import AbstractInput
+
 from lib.keycode import Keycode
 import time
 
@@ -76,9 +77,22 @@ class PicoCalcKeyboard(AbstractInput):
         Initialize keyboard driver.
 
         Args:
-            i2c: Initialized I2C bus instance
+            i2c: Initialized I2C bus instance (can be None for dummy mode)
         """
         self.i2c = i2c
+        self.i2c_working = False  # Track if I2C is functional
+
+        # Try to verify I2C is working
+        if self.i2c is not None:
+            try:
+                devices = self.i2c.scan()
+                if self.KEYBOARD_ADDR in devices:
+                    self.i2c_working = True
+                    print(f"[PicoCalcKeyboard] I2C bus verified, keyboard at address {self.KEYBOARD_ADDR}")
+                else:
+                    print(f"[PicoCalcKeyboard] WARNING: Keyboard not found at address {self.KEYBOARD_ADDR}")
+            except Exception as e:
+                print(f"[PicoCalcKeyboard] WARNING: I2C bus test failed: {e}")
 
         # Create inverse map: keycode -> raw_code
         self.inv_map = {v: k for k, v in self.KEY_MAP.items()}
@@ -92,6 +106,11 @@ class PicoCalcKeyboard(AbstractInput):
         self.last_key_time = 0
         self.key_timeout_ms = 500  # Clear keys after 500ms of no activity
 
+        self._last_print = None
+        self._print_delay = 0.5
+        self._error_count = 0
+        self._max_errors_before_disable = 20  # Disable after too many errors
+
     def _read_raw_data(self):
         """
         Read raw data from keyboard controller.
@@ -99,6 +118,14 @@ class PicoCalcKeyboard(AbstractInput):
         Returns:
             Raw key code (positive for press, negative for release, 0 for no event)
         """
+        # If I2C bus is None or we've had too many errors, don't try
+        if self.i2c is None:
+            return 0
+
+        if self._error_count >= self._max_errors_before_disable:
+            # Too many errors, stop trying to avoid spam
+            return 0
+
         try:
             # Request data from keyboard
             self.i2c.writeto(self.KEYBOARD_ADDR, b'\x09')
@@ -107,6 +134,11 @@ class PicoCalcKeyboard(AbstractInput):
             # Read 2 bytes
             data = self.i2c.readfrom(self.KEYBOARD_ADDR, 2)
             value = (data[1] << 8) | data[0]  # Combine into 16-bit value
+
+            # Reset error count on successful read
+            if self._error_count > 0:
+                self._error_count = 0
+                print("[PicoCalcKeyboard] I2C recovered")
 
             if value == 0:
                 return 0  # No event
@@ -122,8 +154,24 @@ class PicoCalcKeyboard(AbstractInput):
 
             return 0
 
-        except Exception as e:
+        except OSError as e:
             # I2C error - return no event
+            self._error_count += 1
+            now = time.time()
+            if not self._last_print or now - self._last_print > self._print_delay:
+                print(f"[PicoCalcKeyboard] I2C error ({self._error_count}/{self._max_errors_before_disable}): {e}")
+                self._last_print = now
+
+                if self._error_count >= self._max_errors_before_disable:
+                    print(f"[PicoCalcKeyboard] Too many errors, keyboard disabled")
+            return 0
+        except Exception as e:
+            # Unexpected error
+            self._error_count += 1
+            now = time.time()
+            if not self._last_print or now - self._last_print > self._print_delay:
+                print(f"[PicoCalcKeyboard] Unexpected error: {e}")
+                self._last_print = now
             return 0
 
     def _update_key_state(self):
