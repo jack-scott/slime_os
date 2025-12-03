@@ -69,7 +69,7 @@ class System:
         self._toolbar_frame = 0
         self._toolbar_update_interval = 30  # Update toolbar every 30 frames (~1 second at 30fps)
         self._last_mem_free = 0  # Will be initialized on first update
-
+        self._toolbar_counter = 0
         # Logger (print to stdout for simulator)
         print_logs = (device.name == "Simulator")
         self.log = Logger(max_messages=200, print_to_stdout=print_logs)
@@ -185,17 +185,14 @@ class System:
         """
         return self.display.measure_text(text, scale)
 
-    def update(self):
-        """Update display - flip buffer to screen and draw toolbar"""
-        # Update toolbar data periodically (not every frame)
-        self._toolbar_frame += 1
-        if self._toolbar_frame >= self._toolbar_update_interval:
-            self._update_toolbar_data()
-            self._toolbar_frame = 0
+    def update(self, full_update=True):
+        """
+        Update display - flip buffer to screen and draw toolbar.
 
-        # Always draw toolbar (uses cached data)
-        self._draw_toolbar()
-
+        Called by apps after drawing each frame.
+        """
+        if full_update:
+            self._draw_toolbar()
         # Flip display buffer to screen
         self.display.update()
 
@@ -315,12 +312,15 @@ class System:
         mem_kb = self._last_mem_free // 1024
         mem_text = f"{mem_kb}KB"
         text_width = self.display.measure_text(mem_text, scale=1)
+        self._toolbar_counter += 1
+        counter_text_fast = f"fast:{self._toolbar_counter}"
+        fast_width = self.display.measure_text(counter_text_fast, scale=1)
 
         # Position from the right edge
         x_pos = self.device.display_width - text_width - 2
-
         self.display.set_pen(0, 255, 0)  # Green
         self.display.text(mem_text, x_pos, 2, scale=1)
+        self.display.text(counter_text_fast, x_pos - fast_width - 2 , 2, scale=1)
 
     def _update_toolbar_data(self):
         """Update toolbar data (called periodically, not every frame)"""
@@ -331,16 +331,134 @@ class System:
     # App Lifecycle Management
     # ========================================================================
 
+    def _run_system_tasks(self):
+        """
+        Run system maintenance tasks.
+
+        Called every frame after the app yields. This is where the OS does its work:
+        - Update toolbar data (periodically)
+        - Future: Check for system events, update status indicators, etc.
+
+        This runs independently of the app - even if the app doesn't call update().
+        """
+        # Update toolbar data periodically (not every frame)
+        self._toolbar_frame += 1
+        if self._toolbar_frame >= self._toolbar_update_interval:
+            self._update_toolbar_data()
+            self._draw_toolbar()
+            self._toolbar_frame = 0
+        self.update(full_update=False)
+
+    def _prepare_app_for_launch(self):
+        """
+        Prepare system for launching a new app.
+
+        Clears keyboard state to prevent stale key presses from previous app.
+        """
+        if self._input:
+            try:
+                self._input.clear_state()
+                time.sleep(0.1)  # Small delay to ensure key release is processed
+            except AttributeError:
+                pass  # Hardware keyboards may not have clear_state
+
+    def _run_app_frame(self, app_generator, frame_state):
+        """
+        Run a single frame of the app.
+
+        This is the core of the event loop:
+        1. Limit frame rate (30 FPS)
+        2. Feed watchdog
+        3. Call app generator (app runs one iteration and yields back)
+        4. Run system tasks (toolbar updates, etc.)
+
+        Args:
+            app_generator: The app's generator (from app.run())
+            frame_state: Dict with 'last_frame_time' key
+
+        Returns:
+            Tuple of (continue_running, exit_reason, next_app_class)
+            - continue_running: True if app should keep running, False to exit
+            - exit_reason: 'normal', 'launch', etc. (only valid if continue_running=False)
+            - next_app_class: Class to launch next (only valid if exit_reason='launch')
+        """
+        # 1. FRAME RATE LIMITING - Keep consistent 30 FPS
+        target_fps = 30
+        frame_time = 1.0 / target_fps
+        current_time = time.time()
+        elapsed = current_time - frame_state['last_frame_time']
+        if elapsed < frame_time:
+            time.sleep(frame_time - elapsed)
+        frame_state['last_frame_time'] = time.time()
+
+        # 2. FEED WATCHDOG - Prevent hardware reset
+        if self.wdt:
+            self.wdt.feed()
+
+        # 3. RUN APP - Call generator, app executes until next yield
+        #    The app does its work (update state, draw UI, check input)
+        #    then yields control back to us
+        try:
+            result = next(app_generator)
+        except StopIteration as e:
+            # App's run() function returned - app wants to exit
+            if hasattr(e, 'value') and e.value:
+                result = e.value
+                # Check if app wants to launch another app
+                if isinstance(result, tuple) and result[0] == 'launch':
+                    return (False, 'launch', result[1])
+            # Normal exit - return to launcher
+            return (False, 'normal', None)
+
+        # 4. RUN SYSTEM TASKS - OS does maintenance work
+        #    Updates toolbar data, checks system state, etc.
+        #    This happens every frame, independent of the app
+        self._run_system_tasks()
+
+        # 5. HANDLE APP RESULT - Check if app yielded a command
+        if result and isinstance(result, tuple):
+            if result[0] == 'launch':
+                # App yielded a launch command
+                return (False, 'launch', result[1])
+
+        # App yielded normally - continue running
+        return (True, None, None)
+
+    def _cleanup_app(self, app, app_generator):
+        """
+        Clean up app resources.
+
+        Called in finally block - ALWAYS runs even if app crashes.
+
+        Args:
+            app: App instance
+            app_generator: App generator
+        """
+        # Close generator
+        if app_generator:
+            try:
+                app_generator.close()
+            except:
+                pass
+
+        # Delete references and free memory
+        del app
+        del app_generator
+        gc.collect()
+
+        # Log memory status
+        mem = self.memory_info()
+        self.log.debug(f"Memory: {mem['free']/1024:.1f}KB free, {mem['percent_used']:.1f}% used")
+
     def boot(self, initial_app_class):
         """
         Boot the OS with an initial app.
 
-        This is the main event loop. It:
-        1. Creates app instance
-        2. Runs app generator
-        3. Handles app results and exceptions
-        4. Manages app switching
-        5. Cleans up resources
+        Main OS loop that manages app lifecycle:
+        1. Launches apps
+        2. Runs event loop (app yields back to OS each frame)
+        3. Handles app switching and crashes
+        4. Cleans up resources
 
         Args:
             initial_app_class: App class to boot with (typically Launcher)
@@ -350,84 +468,56 @@ class System:
         self.log.info(f"Booting {self.device.name}")
         self.log.info(f"Starting {current_app_class.name if hasattr(current_app_class, 'name') else 'App'}")
 
-        # Frame rate limiting (simulate hardware speed)
-        # Pico 2040 runs at ~133-200 MHz, much slower than desktop
-        # Target ~30 FPS to approximate hardware responsiveness
-        target_fps = 30
-        frame_time = 1.0 / target_fps
-        last_frame_time = time.time()
+        # Frame state for rate limiting
+        frame_state = {'last_frame_time': time.time()}
 
+        # Main OS loop - keeps running, switching between apps
         while True:
-            # Create app instance
+            # 1. CREATE APP INSTANCE
             app = current_app_class(self)
             app_generator = None
             exit_reason = 'normal'
 
-            # Clear keyboard state to prevent stale key presses
-            if self._input:
-                try:
-                    self._input.clear_state()
-                    # Small delay to ensure key release is processed
-                    time.sleep(0.1)
-                except AttributeError:
-                    pass  # Hardware keyboards may not have clear_state
+            # 2. PREPARE FOR LAUNCH
+            self._prepare_app_for_launch()
 
             try:
-                # Call on_enter hook
+                # 3. CALL APP LIFECYCLE HOOKS
+                # on_enter: App can initialize, show loading screen, etc.
                 self.log.debug(f"Calling on_enter for {app.name if hasattr(app, 'name') else 'app'}")
                 try:
                     app.on_enter()
                 except Exception as e:
                     self.log.error(f"Error in on_enter: {e}")
-                    # Continue anyway - don't crash just because on_enter failed
 
-                # Start app generator
+                # 4. START APP GENERATOR
+                # This calls app.run() which returns a generator
                 self.log.debug(f"Creating generator for {app.name if hasattr(app, 'name') else 'app'}")
                 app_generator = app.run()
                 self.log.debug("Generator created, entering event loop")
 
-                # Run app event loop
+                # 5. RUN EVENT LOOP
+                # Each iteration:
+                #   - OS calls next() on generator
+                #   - App runs until it yields (one frame of work)
+                #   - Control returns to OS
+                #   - OS updates toolbar and handles frame timing
                 while True:
-                    # Frame rate limiting
-                    current_time = time.time()
-                    elapsed = current_time - last_frame_time
-                    if elapsed < frame_time:
-                        time.sleep(frame_time - elapsed)
-                    last_frame_time = time.time()
+                    # Run one frame of the app
+                    continue_running, exit_reason, next_app = self._run_app_frame(app_generator, frame_state)
 
-                    # Feed watchdog if enabled
-                    if self.wdt:
-                        self.wdt.feed()
-
-                    # Get next result from app
-                    try:
-                        result = next(app_generator)
-                    except StopIteration as e:
-                        # Generator returned - check if it returned a value
-                        if hasattr(e, 'value') and e.value:
-                            result = e.value
-                            # Check if it's a launch command
-                            if isinstance(result, tuple) and result[0] == 'launch':
-                                exit_reason = 'launch'
-                                current_app_class = result[1]
-                                self.log.info(f"Launching {current_app_class.name if hasattr(current_app_class, 'name') else 'App'}")
-                                break
-                        # Otherwise just exit normally
-                        exit_reason = 'normal'
-                        self.log.info("App exited normally")
-                        current_app_class = initial_app_class
+                    if not continue_running:
+                        # App wants to exit
+                        if exit_reason == 'launch':
+                            current_app_class = next_app
+                            self.log.info(f"Launching {current_app_class.name if hasattr(current_app_class, 'name') else 'App'}")
+                        else:
+                            # Normal exit - return to launcher
+                            current_app_class = initial_app_class
+                            self.log.info("App exited normally")
                         break
 
-                    # Handle special return values from yield
-                    if result and isinstance(result, tuple):
-                        if result[0] == 'launch':
-                            # App wants to launch another app
-                            exit_reason = 'launch'
-                            current_app_class = result[1]
-                            self.log.info(f"Launching {current_app_class.name if hasattr(current_app_class, 'name') else 'App'}")
-                            break  # Exit app loop, will launch new app
-
-                # Call on_exit hook (only if normal exit, not crash)
+                # 6. CALL on_exit HOOK (only for normal exits, not crashes)
                 self.log.debug(f"Calling on_exit({exit_reason})")
                 try:
                     app.on_exit(reason=exit_reason)
@@ -435,54 +525,38 @@ class System:
                     self.log.error(f"Error in on_exit: {e}")
 
             except KeyboardInterrupt:
-                # User interrupted (Ctrl+C)
+                # User pressed Ctrl+C
                 self.log.info("Interrupted by user")
                 exit_reason = 'interrupt'
                 current_app_class = initial_app_class
 
-                # Call on_exit for interrupt
                 try:
                     app.on_exit(reason=exit_reason)
                 except Exception as e:
                     self.log.error(f"Error in on_exit: {e}")
 
             except Exception as e:
-                # App crashed with unhandled exception
+                # App crashed - show error screen
                 self.log.error(f"App crashed: {type(e).__name__}: {e}")
 
-                # Show crash screen
                 self._show_crash_screen(
                     app_name=app.name if hasattr(app, 'name') else "Unknown App",
                     error=f"{type(e).__name__}: {str(e)}"
                 )
 
-                # Return to launcher
                 exit_reason = 'crash'
                 current_app_class = initial_app_class
-                # Note: on_exit NOT called on crash, only on_cleanup
 
             finally:
-                # Call on_cleanup hook (ALWAYS called, even on crash)
+                # 7. CLEANUP (ALWAYS runs, even on crash)
                 self.log.debug("Calling on_cleanup")
                 try:
                     app.on_cleanup()
                 except Exception as e:
                     self.log.error(f"Error in on_cleanup: {e}")
-                    # Continue anyway - don't crash during cleanup
 
-                # Always cleanup resources
-                if app_generator:
-                    try:
-                        app_generator.close()
-                    except:
-                        pass
-
-                del app
-                del app_generator
-                gc.collect()
-
-                mem = self.memory_info()
-                self.log.debug(f"Memory: {mem['free']/1024:.1f}KB free, {mem['percent_used']:.1f}% used")
+                # Clean up resources
+                self._cleanup_app(app, app_generator)
 
     def _show_crash_screen(self, app_name, error):
         """
