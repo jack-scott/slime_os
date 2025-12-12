@@ -19,6 +19,7 @@ class PicoCalcDevice(BaseDevice):
     has_keyboard = True
     has_display = True
     has_sd_card = True
+    has_battery = True
 
     # Hardware pin definitions
     # Keyboard (I2C)
@@ -39,6 +40,20 @@ class PicoCalcDevice(BaseDevice):
     SD_CARD_MOSI = 19
     SD_CARD_MISO = 16
     SD_CARD_CS = 17
+
+    # Battery (accessed through keyboard controller)
+    # The keyboard controller (STM32) manages the AXP2101 and exposes
+    # battery data through its I2C interface at register 0x0b
+    BATTERY_I2C_ID = 1
+    BATTERY_SDA = 6
+    BATTERY_SCL = 7
+    BATTERY_I2C_ADDRESS = 0x1F  # Keyboard controller address
+
+    # Register addresses (from keyboard controller firmware)
+    BATTERY_REG_PERCENT = 0x0b  # Battery register (returns percent + charging bit)
+    BATTERY_REG_VBAT_H = 0x00   # Not used (kept for compatibility)
+    BATTERY_REG_VBAT_L = 0x00   # Not used (kept for compatibility)
+    BATTERY_REG_CHARGING_STATUS = 0x00  # Not used (kept for compatibility)
 
     def create_display(self):
         """Create Pico Calc display driver"""
@@ -65,8 +80,6 @@ class PicoCalcDevice(BaseDevice):
 
         print("[Keyboard] Initializing keyboard driver...")
 
-        # Short delay before starting
-        time.sleep_ms(100)
 
         # CRITICAL: Configure pins with pull-ups BEFORE creating I2C bus
         # The Pico Calc keyboard needs internal pull-ups enabled on I2C lines
@@ -86,19 +99,10 @@ class PicoCalcDevice(BaseDevice):
             freq=100000  # 100kHz standard speed
         )
 
-        # Give I2C bus time to stabilize
-        time.sleep_ms(100)
-
         # Scan for keyboard
         print("[Keyboard] Scanning for keyboard controller...")
         devices = i2c.scan()
         print(f"[Keyboard] Found I2C devices: {devices}")
-
-        if PicoCalcKeyboard.KEYBOARD_ADDR in devices:
-            print(f"[Keyboard] ✓ Keyboard found at address {PicoCalcKeyboard.KEYBOARD_ADDR}")
-        else:
-            print(f"[Keyboard] WARNING: Keyboard not found at address {PicoCalcKeyboard.KEYBOARD_ADDR}")
-            print("[Keyboard] Keyboard will not respond to input")
 
         # Create keyboard driver and drain initial queue
         kbd = PicoCalcKeyboard(i2c)
@@ -117,3 +121,19 @@ class PicoCalcDevice(BaseDevice):
 
         print("[Keyboard] Initialization complete")
         return kbd
+
+    def create_battery(self):
+        """Create Pico Calc battery driver"""
+        # Lazy import
+        from slime.drivers.battery.pico_calc_batt import PicoCalcBattery
+
+        return PicoCalcBattery(
+            i2c_id=self.BATTERY_I2C_ID,
+            sda=self.BATTERY_SDA,
+            scl=self.BATTERY_SCL,
+            i2c_address=self.BATTERY_I2C_ADDRESS,
+            reg_percent=self.BATTERY_REG_PERCENT,
+            reg_vbat_h=self.BATTERY_REG_VBAT_H,
+            reg_vbat_l=self.BATTERY_REG_VBAT_L,
+            reg_charging_status=self.BATTERY_REG_CHARGING_STATUS
+        )

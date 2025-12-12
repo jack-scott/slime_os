@@ -21,6 +21,7 @@ class BaseDevice:
     has_keyboard = True
     has_display = True
     has_sd_card = False
+    has_battery = False
 
     def create_display(self):
         """
@@ -49,3 +50,17 @@ class BaseDevice:
             NotImplementedError: If device has no input
         """
         raise NotImplementedError(f"{self.name} does not implement create_input()")
+
+    def create_battery(self):
+        """
+        Create and return a battery driver instance.
+
+        The battery driver must implement the AbstractBattery interface.
+
+        Returns:
+            Battery driver instance
+
+        Raises:
+            NotImplementedError: If device has no battery
+        """
+        raise NotImplementedError(f"{self.name} does not implement create_battery()")

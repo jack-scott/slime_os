@@ -12,6 +12,7 @@ The System class is the OS kernel that manages:
 import time
 import gc as _gc_module
 from slime.logger import Logger
+from slime.settings import Settings
 
 # Create gc wrapper that works for both MicroPython and Python
 class GC:
@@ -51,6 +52,12 @@ class System:
     TOOLBAR_HEIGHT = 16
     TOOLBAR_ENABLED = True
 
+    # Keyboard controller I2C address (for backlight control)
+    KEYBOARD_I2C_ADDRESS = 0x1F
+    KEYBOARD_REG_LCD_BACKLIGHT = 0x05  # LCD backlight register
+    KEYBOARD_REG_KBD_BACKLIGHT = 0x0A  # Keyboard backlight register
+    WRITE_MASK = 0x80
+
     def __init__(self, device, watchdog_timeout=None):
         """
         Initialize the system.
@@ -64,6 +71,7 @@ class System:
         # Lazy-loaded drivers
         self._display = None
         self._input = None
+        self._battery = None
 
         # Toolbar state
         self._toolbar_frame = 0
@@ -73,10 +81,17 @@ class System:
         self._fps_frame_times = []  # Track last N frame times for FPS calculation
         self._toolbar_update_count = 0  # Counter for toolbar updates
         self._last_cpu_freq = 0  # CPU frequency in MHz
+        self._last_battery_level = 0  # Battery percentage
+        self._last_battery_charging = False  # Is battery charging
+
         # Logger (print to stdout for simulator)
         print_logs = (device.name == "Simulator")
         self.log = Logger(max_messages=200, print_to_stdout=print_logs)
         self.log.info(f"System initializing on {device.name}")
+
+        # Settings manager (must be after logger)
+        self.settings = Settings()
+        self._apply_settings()
 
         # Watchdog setup
         self.wdt = None
@@ -231,6 +246,15 @@ class System:
         if self._input is None:
             self._input = self.device.create_input()
             print("[OS] Input initialized")
+
+            # Apply brightness settings now that input driver (with I2C bus) is ready
+            if self.device.name == "Pico Calc":
+                display_brightness = self.settings.get('display_brightness', 255)
+                keyboard_brightness = self.settings.get('keyboard_brightness', 80)
+                self.set_display_brightness(display_brightness, silent=True)
+                self.set_keyboard_brightness(keyboard_brightness, silent=True)
+                self.log.info(f"Brightness settings applied: Display={display_brightness}, Kbd={keyboard_brightness}")
+
         return self._input
 
     def key_pressed(self, keycode):
@@ -256,6 +280,199 @@ class System:
             Dict mapping each keycode to True/False
         """
         return self.input.get_keys(keycodes)
+
+    # ========================================================================
+    # Battery API
+    # ========================================================================
+
+    @property
+    def battery(self):
+        """Get battery driver (lazy loaded)"""
+        if self._battery is None and self.device.has_battery:
+            self._battery = self.device.create_battery()
+            print("[OS] Battery initialized")
+        return self._battery
+
+    def battery_level(self):
+        """
+        Get current battery level.
+
+        Returns:
+            int: Battery percentage (0-100), or None if no battery
+        """
+        if self.battery:
+            return self.battery.get_battery_level()
+        return None
+
+    def battery_charging(self):
+        """
+        Check if battery is charging.
+
+        Returns:
+            bool: True if charging, False otherwise, None if no battery
+        """
+        if self.battery:
+            return self.battery.get_is_charging()
+        return None
+
+    # ========================================================================
+    # Settings and Configuration
+    # ========================================================================
+
+    def _apply_settings(self):
+        """Apply all settings from settings manager (called on boot)"""
+        # Apply CPU frequency (can be done immediately)
+        cpu_freq = self.settings.get('cpu_freq_mhz', 150)
+        self.set_cpu_frequency(cpu_freq, silent=True)
+        self.log.info(f"CPU frequency set to {cpu_freq} MHz")
+
+        # Note: Brightness settings are applied later when input driver is initialized
+        # (see input property getter)
+
+    def set_cpu_frequency(self, freq_mhz, silent=False):
+        """
+        Set CPU frequency
+
+        Args:
+            freq_mhz: Frequency in MHz
+            silent: If True, don't log
+
+        Returns:
+            True on success, False on error
+        """
+        try:
+            import machine
+            freq_hz = freq_mhz * 1_000_000
+            machine.freq(freq_hz)
+            if not silent:
+                self.log.info(f"CPU frequency set to {freq_mhz} MHz")
+            return True
+        except Exception as e:
+            if not silent:
+                self.log.error(f"Failed to set CPU frequency: {e}")
+            return False
+
+    def get_cpu_frequency(self):
+        """
+        Get current CPU frequency
+
+        Returns:
+            Frequency in MHz, or 0 if unavailable
+        """
+        try:
+            import machine
+            freq_hz = machine.freq()
+            return freq_hz // 1_000_000
+        except:
+            return 0
+
+    def set_display_brightness(self, brightness, silent=False):
+        """
+        Set display backlight brightness (via keyboard controller)
+
+        Args:
+            brightness: Brightness level (0-255)
+            silent: If True, don't log
+
+        Returns:
+            True on success, False on error
+        """
+        try:
+            # Clamp brightness to valid range
+            brightness = max(0, min(255, brightness))
+
+            # Only works on Pico Calc with keyboard controller
+            if self.device.name != "Pico Calc":
+                return False
+
+            # Input driver not ready yet (keyboard controller on same I2C bus)
+            if not self._input:
+                if not silent:
+                    self.log.debug(f"Input not ready, display brightness will be applied later: {brightness}")
+                return True
+
+            # Get I2C bus from input driver
+            if hasattr(self._input, 'i2c') and self._input.i2c:
+                i2c = self._input.i2c
+
+                # Write to keyboard controller register 0x05 (LCD backlight)
+                # Protocol: [register | WRITE_MASK, value]
+                reg = self.KEYBOARD_REG_LCD_BACKLIGHT | self.WRITE_MASK
+                msg = bytes([reg, brightness])
+
+                i2c.writeto(self.KEYBOARD_I2C_ADDRESS, msg)
+
+                # Wait for controller to process
+                time.sleep(0.016)  # 16ms
+
+                # Read response (2 bytes)
+                response = i2c.readfrom(self.KEYBOARD_I2C_ADDRESS, 2)
+
+                if not silent:
+                    self.log.info(f"Display brightness set to {brightness}")
+                return True
+            else:
+                if not silent:
+                    self.log.warn("Display brightness control not available")
+                return False
+        except Exception as e:
+            if not silent:
+                self.log.error(f"Failed to set display brightness: {e}")
+            return False
+
+    def set_keyboard_brightness(self, brightness, silent=False):
+        """
+        Set keyboard backlight brightness
+
+        Args:
+            brightness: Brightness level (0-255)
+            silent: If True, don't log
+
+        Returns:
+            True on success, False on error
+        """
+        try:
+            # Clamp brightness to valid range
+            brightness = max(0, min(255, brightness))
+
+            # Only works on Pico Calc with keyboard controller
+            if self.device.name != "Pico Calc":
+                return False
+
+            # Input driver not ready yet
+            if not self._input:
+                if not silent:
+                    self.log.debug(f"Input not ready, keyboard brightness will be applied later: {brightness}")
+                return True
+
+            # Get I2C bus from input driver
+            if hasattr(self._input, 'i2c') and self._input.i2c:
+                i2c = self._input.i2c
+
+                # Write to keyboard controller register 0x0A (keyboard backlight)
+                # Protocol: [register | WRITE_MASK, value]
+                reg = self.KEYBOARD_REG_KBD_BACKLIGHT | self.WRITE_MASK
+                msg = bytes([reg, brightness])
+
+                i2c.writeto(self.KEYBOARD_I2C_ADDRESS, msg)
+
+                # Wait for controller to process
+                time.sleep(0.016)  # 16ms
+
+                # Read response (2 bytes)
+                response = i2c.readfrom(self.KEYBOARD_I2C_ADDRESS, 2)
+
+                if not silent:
+                    self.log.info(f"Keyboard brightness set to {brightness}")
+                return True
+            else:
+                if not silent:
+                    self.log.warn("Keyboard brightness control not available")
+                return False
+        except Exception as e:
+            if not silent:
+                self.log.error(f"Failed to set keyboard brightness: {e}")
+            return False
 
     # ========================================================================
     # System Utilities
@@ -294,7 +511,7 @@ class System:
         """
         Draw the system toolbar at the top of the screen.
 
-        Shows: CPU MHz | FPS | RAM usage #counter
+        Layout: SLIME OS | FPS | CPU MHz | RAM KB | #counter | Battery%
         """
         if not self.TOOLBAR_ENABLED:
             return
@@ -302,31 +519,57 @@ class System:
         # Draw toolbar background (dark gray)
         self.display.set_pen(32, 32, 32)
         self.display.rectangle(0, 0, self.device.display_width, self.TOOLBAR_HEIGHT)
-        self.display.set_pen(255, 255, 0)  # Yellow
-        self.display.text("SLIME OS", 2, 2, scale=1)
 
         # Update data if not initialized yet
         if self._last_mem_free == 0:
             self._update_toolbar_data()
 
-        #Cpu freq
-        cpu_text = f"{self._last_cpu_freq}MHz"
+        # Left: SLIME OS logo (yellow)
         self.display.set_pen(255, 255, 0)  # Yellow
+        self.display.text("SLIME OS", 2, 2, scale=1)
 
-        # Draw RAM usage and update counter on the right
+        # Right: Battery percentage (if available)
+        if self.device.has_battery:
+            # Show battery with icon
+            battery_char = "+" if self._last_battery_charging else ""
+            battery_text = f"{battery_char}{self._last_battery_level}%"
+            battery_width = self.display.measure_text(battery_text, scale=1)
+            battery_x = self.device.display_width - battery_width - 2
+
+            # Color battery based on level
+            if self._last_battery_charging:
+                battery_color = (0, 255, 255)  # Cyan - charging
+            elif self._last_battery_level >= 50:
+                battery_color = (0, 255, 0)  # Green - good
+            elif self._last_battery_level >= 20:
+                battery_color = (255, 255, 0)  # Yellow - medium
+            else:
+                battery_color = (255, 0, 0)  # Red - low
+
+            self.display.set_pen(*battery_color)
+            self.display.text(battery_text, battery_x, 2, scale=1)
+
+            # Stats go before battery
+            right_edge = battery_x - 4  # Leave gap before battery
+        else:
+            # No battery, stats go all the way to right
+            right_edge = self.device.display_width - 2
+
+        # Middle-Right: CPU | RAM | #counter
+        cpu_text = f"{self._last_cpu_freq}MHz"
         mem_kb = self._last_mem_free // 1024
         update_counter = self._toolbar_update_count
         stats_text = f"{cpu_text} | {mem_kb}KB | #{update_counter}"
-        stats_text_width = self.display.measure_text(stats_text, scale=1)
-        # Position from the right edge
-        stats_x_pos = self.device.display_width - stats_text_width - 2
+        stats_width = self.display.measure_text(stats_text, scale=1)
+        stats_x = right_edge - stats_width
         self.display.set_pen(0, 255, 0)  # Green
-        self.display.text(stats_text, stats_x_pos, 2, scale=1)
+        self.display.text(stats_text, stats_x, 2, scale=1)
 
-        # Draw FPS from the right
+        # Middle: FPS (before stats)
         fps_text = f"{self._last_fps}FPS |"
         fps_width = self.display.measure_text(fps_text, scale=1)
-        fps_x = stats_x_pos - fps_width - 1
+        fps_x = stats_x - fps_width - 1
+
         # Color FPS based on performance
         if self._last_fps >= 28:
             fps_color = (0, 255, 0)  # Green - good
@@ -354,6 +597,15 @@ class System:
             self._last_cpu_freq = freq_hz // 1_000_000  # Convert to MHz
         except:
             self._last_cpu_freq = 0  # Not available
+
+        # Update battery info
+        if self.device.has_battery:
+            try:
+                self._last_battery_level = self.battery_level() or 0
+                self._last_battery_charging = self.battery_charging() or False
+            except:
+                self._last_battery_level = 0
+                self._last_battery_charging = False
 
         # Calculate FPS from recent frame times
         if len(self._fps_frame_times) >= 2:

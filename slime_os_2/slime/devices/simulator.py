@@ -25,6 +25,7 @@ class SimulatorDevice(BaseDevice):
     has_keyboard = True
     has_display = True
     has_sd_card = False  # Not simulated yet
+    has_battery = True
 
     # Simulator-specific settings
     WINDOW_SCALE = 2  # 2x scale for better visibility (640x640 window)
@@ -48,3 +49,10 @@ class SimulatorDevice(BaseDevice):
         from slime.drivers.input.sim_keyboard import SimKeyboard
 
         return SimKeyboard()
+
+    def create_battery(self):
+        """Create simulator battery driver"""
+        # Lazy import
+        from slime.drivers.battery.sim_battery import SimBattery
+
+        return SimBattery(initial_level=85, is_charging=False)
