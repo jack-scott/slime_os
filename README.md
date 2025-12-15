@@ -1,4 +1,5 @@
 # Slime OS 2
+<img src="screenshots/launcher.png" alt="screenshot of home page" width="400px">
 
 A lightweight operating system for embedded MicroPython devices.
 
@@ -60,8 +61,6 @@ slime_os_2/
 python3 dev/run_simulator.py
 ```
 
-<img src="screenshot.png" alt="screenshot of home page" width="400px">
-
 Requires pygame: `pip3 install pygame`
 
 ## Adding Apps
@@ -89,6 +88,13 @@ class MyApp(App):
 ```
 
 The launcher will automatically discover and display your app!
+
+Some apps that are already included
+<img src="screenshots/cpu_manager.png" alt="CPU" width="400px">
+<img src="screenshots/i2s_app.png" alt="I2C" width="400px">
+<img src="screenshots/log_viewer.png" alt="Log viewer" width="400px">
+<img src="screenshots/settings.png" alt="Settings" width="400px">
+
 
 ## Hardware Support
 
