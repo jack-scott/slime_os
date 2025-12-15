@@ -108,6 +108,9 @@ class SimKeyboard(AbstractInput):
         # Track keys that were pressed last frame (for edge detection)
         self.prev_pressed_keys = set()
 
+        # Modifier states
+        self.caps_lock_active = False
+
         print("[SimKeyboard] Initialized")
 
     def clear_state(self):
@@ -115,7 +118,7 @@ class SimKeyboard(AbstractInput):
         self.pressed_keys.clear()
         self.prev_pressed_keys.clear()
 
-    def _update_state(self):
+    def _update_key_state(self):
         """Update keyboard state from pygame"""
         # Process all pending events
         for event in pygame.event.get():
@@ -124,6 +127,10 @@ class SimKeyboard(AbstractInput):
                 if event.key in self.KEY_MAP:
                     keycode = self.KEY_MAP[event.key]
                     self.pressed_keys.add(keycode)
+
+                    # Toggle caps lock on press
+                    if keycode == Keycode.CAPS_LOCK:
+                        self.caps_lock_active = not self.caps_lock_active
 
             elif event.type == pygame.KEYUP:
                 # Key released
@@ -135,19 +142,18 @@ class SimKeyboard(AbstractInput):
                 # Window closed
                 raise SystemExit("Window closed")
 
-    def get_key(self, keycode):
+    def get_key(self, keycode, case_sensitive=False):
         """
         Check if a specific key was just pressed (edge detection).
 
         Args:
             keycode: Keycode constant
+            case_sensitive: Ignored for simulator (always case-sensitive)
 
         Returns:
             True if pressed this frame (not last frame), False otherwise
         """
-        # Update state
-        self._update_state()
-
+        # Read from cached state (updated once per frame by system)
         # Check if key is newly pressed (pressed now, but not last frame)
         is_newly_pressed = keycode in self.pressed_keys and keycode not in self.prev_pressed_keys
 
@@ -156,19 +162,18 @@ class SimKeyboard(AbstractInput):
 
         return is_newly_pressed
 
-    def get_keys(self, keycodes):
+    def get_keys(self, keycodes, case_sensitive=False):
         """
         Check multiple keys at once (edge detection).
 
         Args:
             keycodes: List of keycode constants
+            case_sensitive: Ignored for simulator (always case-sensitive)
 
         Returns:
             Dict mapping each keycode to True/False (True if newly pressed)
         """
-        # Update state once
-        self._update_state()
-
+        # Read from cached state (updated once per frame by system)
         # Check each key for new presses
         result = {}
         for keycode in keycodes:

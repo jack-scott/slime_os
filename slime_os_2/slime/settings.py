@@ -20,6 +20,9 @@ class Settings:
         'cpu_freq_mhz': 150,  # Default CPU frequency in MHz
         'display_brightness': 255,  # Display backlight (0-255, full brightness)
         'keyboard_brightness': 80,  # Keyboard backlight (0-255, medium-high)
+        'wifi_ssid': '',  # WiFi network name
+        'wifi_password': '',  # WiFi password
+        'wifi_auto_connect': True,  # Auto-connect to WiFi on boot
     }
 
     SETTINGS_FILE = 'settings.json'

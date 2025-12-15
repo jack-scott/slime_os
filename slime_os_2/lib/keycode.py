@@ -40,6 +40,62 @@ class Keycode:
     Y = 0x1C
     Z = 0x1D
 
+    # Uppercase letter variants (for caps-aware keyboards)
+    A_UPPER = 0x100
+    B_UPPER = 0x101
+    C_UPPER = 0x102
+    D_UPPER = 0x103
+    E_UPPER = 0x104
+    F_UPPER = 0x105
+    G_UPPER = 0x106
+    H_UPPER = 0x107
+    I_UPPER = 0x108
+    J_UPPER = 0x109
+    K_UPPER = 0x10A
+    L_UPPER = 0x10B
+    M_UPPER = 0x10C
+    N_UPPER = 0x10D
+    O_UPPER = 0x10E
+    P_UPPER = 0x10F
+    Q_UPPER = 0x110
+    R_UPPER = 0x111
+    S_UPPER = 0x112
+    T_UPPER = 0x113
+    U_UPPER = 0x114
+    V_UPPER = 0x115
+    W_UPPER = 0x116
+    X_UPPER = 0x117
+    Y_UPPER = 0x118
+    Z_UPPER = 0x119
+
+    # Lowercase letter variants (aliases for standard keycodes)
+    A_LOWER = A
+    B_LOWER = B
+    C_LOWER = C
+    D_LOWER = D
+    E_LOWER = E
+    F_LOWER = F
+    G_LOWER = G
+    H_LOWER = H
+    I_LOWER = I
+    J_LOWER = J
+    K_LOWER = K
+    L_LOWER = L
+    M_LOWER = M
+    N_LOWER = N
+    O_LOWER = O
+    P_LOWER = P
+    Q_LOWER = Q
+    R_LOWER = R
+    S_LOWER = S
+    T_LOWER = T
+    U_LOWER = U
+    V_LOWER = V
+    W_LOWER = W
+    X_LOWER = X
+    Y_LOWER = Y
+    Z_LOWER = Z
+
     # Numbers
     ONE = 0x1E
     TWO = 0x1F
@@ -122,3 +178,4 @@ class Keycode:
     RIGHT_SHIFT = 0xE5
     RIGHT_ALT = 0xE6
     RIGHT_GUI = 0xE7
+    POWER = 0x81  # not standard in HID keyboard page, but usable for your own mapping

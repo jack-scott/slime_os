@@ -83,6 +83,7 @@ class System:
         self._last_cpu_freq = 0  # CPU frequency in MHz
         self._last_battery_level = 0  # Battery percentage
         self._last_battery_charging = False  # Is battery charging
+        self._last_wifi_connected = False  # WiFi connection status
 
         # Logger (print to stdout for simulator)
         print_logs = (device.name == "Simulator")
@@ -91,6 +92,7 @@ class System:
 
         # Settings manager (must be after logger)
         self.settings = Settings()
+        self._wlan = None  # WiFi interface (lazy loaded)
         self._apply_settings()
 
         # Watchdog setup
@@ -257,29 +259,33 @@ class System:
 
         return self._input
 
-    def key_pressed(self, keycode):
+    def key_pressed(self, keycode, case_sensitive=False):
         """
         Check if a key is currently pressed.
 
         Args:
             keycode: Keycode constant (from lib.keycode)
+            case_sensitive: If True, only check exact keycode. If False (default),
+                          for letter keycodes, check both upper and lower variants.
 
         Returns:
             True if pressed, False otherwise
         """
-        return self.input.get_key(keycode)
+        return self.input.get_key(keycode, case_sensitive=case_sensitive)
 
-    def keys_pressed(self, keycodes):
+    def keys_pressed(self, keycodes, case_sensitive=False):
         """
         Check multiple keys at once.
 
         Args:
             keycodes: List of keycode constants
+            case_sensitive: If True, only check exact keycodes. If False (default),
+                          for letter keycodes, check both upper and lower variants.
 
         Returns:
             Dict mapping each keycode to True/False
         """
-        return self.input.get_keys(keycodes)
+        return self.input.get_keys(keycodes, case_sensitive=case_sensitive)
 
     # ========================================================================
     # Battery API
@@ -316,6 +322,124 @@ class System:
         return None
 
     # ========================================================================
+    # WiFi API
+    # ========================================================================
+
+    def wifi_connect(self, ssid=None, password=None, timeout=10):
+        """
+        Connect to WiFi network
+
+        Args:
+            ssid: Network SSID (uses settings if None)
+            password: Network password (uses settings if None)
+            timeout: Connection timeout in seconds
+
+        Returns:
+            Tuple of (success: bool, ip_address: str or None, error: str or None)
+        """
+        try:
+            import network
+            import time
+
+            # Use credentials from settings if not provided
+            if ssid is None:
+                ssid = self.settings.get('wifi_ssid', '')
+            if password is None:
+                password = self.settings.get('wifi_password', '')
+
+            if not ssid:
+                return (False, None, "No SSID configured")
+
+            self.log.info(f"WiFi: Connecting to '{ssid}'...")
+
+            # Create WLAN interface if needed
+            if self._wlan is None:
+                self._wlan = network.WLAN(network.STA_IF)
+
+            # Activate and connect
+            self._wlan.active(True)
+            self._wlan.connect(ssid, password)
+
+            # Wait for connection
+            start_time = time.time()
+            while not self._wlan.isconnected():
+                if time.time() - start_time > timeout:
+                    self.log.error(f"WiFi: Connection timeout after {timeout}s")
+                    return (False, None, "Connection timeout")
+                time.sleep(0.1)
+
+            # Get IP address
+            ip_info = self._wlan.ifconfig()
+            ip_address = ip_info[0]
+
+            self.log.info(f"WiFi: Connected! IP: {ip_address}")
+            return (True, ip_address, None)
+
+        except ImportError:
+            error = "WiFi not available (no network module)"
+            self.log.error(f"WiFi: {error}")
+            return (False, None, error)
+        except Exception as e:
+            error = str(e)
+            self.log.error(f"WiFi: Connection failed: {error}")
+            return (False, None, error)
+
+    def wifi_disconnect(self):
+        """
+        Disconnect from WiFi
+
+        Returns:
+            True on success, False on error
+        """
+        try:
+            if self._wlan:
+                self._wlan.disconnect()
+                self._wlan.active(False)
+                self.log.info("WiFi: Disconnected")
+            return True
+        except Exception as e:
+            self.log.error(f"WiFi: Disconnect failed: {e}")
+            return False
+
+    def wifi_status(self):
+        """
+        Get WiFi connection status
+
+        Returns:
+            Dict with: connected, ip, ssid, rssi
+        """
+        try:
+            if self._wlan is None or not self._wlan.active():
+                return {'connected': False, 'ip': None, 'ssid': None, 'rssi': None}
+
+            connected = self._wlan.isconnected()
+            if connected:
+                ip_info = self._wlan.ifconfig()
+                # Try to get SSID and RSSI
+                try:
+                    status = self._wlan.status()
+                    # Get connected network info
+                    ssid = self._wlan.config('essid')
+                    # RSSI might not be available in all implementations
+                    rssi = self._wlan.status('rssi') if hasattr(self._wlan, 'status') else None
+                except:
+                    ssid = "Unknown"
+                    rssi = None
+
+                return {
+                    'connected': True,
+                    'ip': ip_info[0],
+                    'ssid': ssid,
+                    'rssi': rssi
+                }
+            else:
+                return {'connected': False, 'ip': None, 'ssid': None, 'rssi': None}
+
+        except Exception as e:
+            self.log.error(f"WiFi: Status check failed: {e}")
+            return {'connected': False, 'ip': None, 'ssid': None, 'rssi': None}
+
+    # ========================================================================
     # Settings and Configuration
     # ========================================================================
 
@@ -325,6 +449,18 @@ class System:
         cpu_freq = self.settings.get('cpu_freq_mhz', 150)
         self.set_cpu_frequency(cpu_freq, silent=True)
         self.log.info(f"CPU frequency set to {cpu_freq} MHz")
+
+        # Auto-connect to WiFi if enabled
+        if self.settings.get('wifi_auto_connect', True):
+            ssid = self.settings.get('wifi_ssid', '')
+            if ssid:
+                self.log.info(f"WiFi: Auto-connecting to '{ssid}'...")
+                # Connect in background (non-blocking)
+                success, ip, error = self.wifi_connect(timeout=10)
+                if success:
+                    self.log.info(f"WiFi: Auto-connect successful, IP: {ip}")
+                else:
+                    self.log.warn(f"WiFi: Auto-connect failed: {error}")
 
         # Note: Brightness settings are applied later when input driver is initialized
         # (see input property getter)
@@ -511,7 +647,7 @@ class System:
         """
         Draw the system toolbar at the top of the screen.
 
-        Layout: SLIME OS | FPS | CPU MHz | RAM KB | #counter | Battery%
+        Layout: SLIME OS W [CAPS] | FPS | CPU MHz | RAM KB | #counter | Battery%
         """
         if not self.TOOLBAR_ENABLED:
             return
@@ -527,6 +663,20 @@ class System:
         # Left: SLIME OS logo (yellow)
         self.display.set_pen(255, 255, 0)  # Yellow
         self.display.text("SLIME OS", 2, 2, scale=1)
+
+        # WiFi status icon (after SLIME OS logo)
+        wifi_icon = "W"
+        if self._last_wifi_connected:
+            wifi_color = (0, 255, 0)  # Green - connected
+        else:
+            wifi_color = (100, 100, 100)  # Gray - disconnected
+        self.display.set_pen(*wifi_color)
+        self.display.text(wifi_icon, 52, 2, scale=1)
+
+        # Caps lock indicator (after WiFi icon)
+        if self._input and hasattr(self._input, 'caps_lock_active') and self._input.caps_lock_active:
+            self.display.set_pen(255, 255, 0)  # Yellow - caps on
+            self.display.text("[CAPS]", 62, 2, scale=1)
 
         # Right: Battery percentage (if available)
         if self.device.has_battery:
@@ -607,6 +757,13 @@ class System:
                 self._last_battery_level = 0
                 self._last_battery_charging = False
 
+        # Update WiFi status
+        try:
+            wifi_info = self.wifi_status()
+            self._last_wifi_connected = wifi_info['connected']
+        except:
+            self._last_wifi_connected = False
+
         # Calculate FPS from recent frame times
         if len(self._fps_frame_times) >= 2:
             # Average time between frames over last N frames
@@ -648,12 +805,17 @@ class System:
         Run system maintenance tasks.
 
         Called every frame after the app yields. This is where the OS does its work:
+        - Update keyboard state (once per frame)
         - Track FPS
         - Update toolbar data (periodically)
         - Future: Check for system events, update status indicators, etc.
 
         This runs independently of the app - even if the app doesn't call update().
         """
+        # Update keyboard state once per frame (before apps check keys)
+        if self._input is not None and hasattr(self._input, '_update_key_state'):
+            self._input._update_key_state()
+
         # Track frame times for FPS calculation
         current_time = time.time()
         self._fps_frame_times.append(current_time)

@@ -1,77 +1,99 @@
-# slime_os
+# Slime OS 2
 
-Slime OS is an app launcher for the [PicoVision](https://collabs.shop/fca3j3) (and soon other RP2040 and RP2350 devices). It was originally designed for the [Slimedeck Zero](https://youtu.be/rnwPmoWMGqk), a mini cyberdeck project. However I hope to expand it to other devices and form factors.
+A lightweight operating system for embedded MicroPython devices.
 
-![Slime OS launcher and i2c Scan app](/screenshot.gif)
+This project started from [Slime OS](https://github.com/abeisgoat/slime_os) but has been re-written to be easier to extend and modify.
 
-*This README contains affiliate links which help support this project!*
+## Directory Structure
 
-## Software
-
-Slime OS runs in a limited 32-color mode with a 400x240 internal resolution which is interlaced up to 800x480. This resolution should scale well on most HDMI displays.
-
-### Setup
-
-1. Flash the [widescreen build](https://github.com/pimoroni/picovision/releases) of the PicoVision firmware to your PicoVision CPU.
-2. Use [Thonny](https://thonny.org/) to replace the contents of your PicoVision Micropython filesystem with the files in `src`. 
-
-### Making apps
-
-Please refer to an [example app](/src/flashlight_app.py) for boiler plate.
-
-Slime OS includes various libraries which are used internally but may also be helpful when making apps.
-
-Begin by importing slime_os...
-
-```python
-import slime_os as sos
+```
+slime_os_2/
+├── main.py              # Entry point
+├── config.py            # Device configuration
+├── deploy_to_pico.sh    # Hardware deployment script
+│
+├── apps/                # User applications
+│   ├── launcher.py      # App launcher (home screen)
+│   ├── flashlight.py    # Example app
+│   └── log_viewer.py    # System log viewer
+│
+├── lib/                 # Libraries
+│   └── keycode.py       # Keyboard key constants
+│
+├── slime/               # OS core
+│   ├── system.py        # System kernel
+│   ├── app.py           # App base class
+│   ├── logger.py        # Logging system
+│   ├── devices/         # Device profiles
+│   └── drivers/         # Hardware drivers
+│
+└── dev/                 # Development files (NOT uploaded to hardware)
+    ├── *.md             # Documentation
+    ├── run_simulator.py # Desktop simulator
+    ├── compat/          # Desktop compatibility shims
+    └── slime/           # Simulator-specific drivers
 ```
 
-| Slime OS Library  | Description | 
-| ------------- | ------------- |
-| [sos.gfx](/src/slime_os/graphics.py)  | Drawing methods including shapes, text, and other utilities.  |
-| [sos.intents](/src/slime_os/intents.py)  | Intents are used to send signals from an app to the OS, including quitting the app, swapping apps, or flipping the frame buffer.  |
-| [sos.ctrl](/src/slime_os/expansion.py)  | Controller for identifying expansions. |
-| [sos.kbd](/src/slime_os/keyboard_i2c.py)  | Keyboard instance for reading buttons. |
+## Quick Start
 
-### Issues
+### Deploy to Hardware (Pico Calc)
 
-This software is experimental and does not work completely, specifically issues include...
+1. Edit `config.py` to select your device:
+   ```python
+   DEVICE = "pico_calc"
+   ```
 
-* Input is only supported via an i2c keyboard, which is not documented (hoping to add USB keyboard soon)
-* Some apps are upside down due to the Slimedeck having the screen rotated 180 degrees. Newer apps use the `sos.graphics.*` methods which support the `display/flipped` value in `config.py`. Older apps use `self.display.*` and have wild math to rotate everything manually.
-* Everything is generally incomplete
+2. Run the deployment script:
+   ```bash
+   ./deploy_to_pico.sh
+   ```
 
-## Hardware
+3. Reset your Pico and the launcher will appear!
 
-Currently this project uses a very specific set of hardware, however I'd like to expand it to support other RP2040 and RP2350 boards in the future. Feel free to do PRs to add more general hardware support.
+### Run Simulator (Desktop)
 
-### Mainboard
+```bash
+python3 dev/run_simulator.py
+```
 
-This project is currently only tested on the [PicoVision](https://collabs.shop/fca3j3). 
+[screenshot of home page](screenshot.png)
 
-### Keyboard
+Requires pygame: `pip3 install pygame`
 
-The (currently) only support keyboard is based off this [XRT500 remote](https://www.amazon.com/dp/B01IOZBNBC/?tag=boosteroven-20). There are a few variants of this same "version" of remote, but I've only used this exact one.
+## Adding Apps
 
-Along with the remote, you will need an [MCP23017](https://www.adafruit.com/product/732) to convert the key matrix to I2C. I have a few extra of the [keyboard PCBs available for sale](https://abe.today/products/mcp23017-port-expander-for-xrt500-tv-remote). You could also pick up an [Adafruit MCP23017 board](https://www.adafruit.com/product/5346) and wire it to the keyboard PCB by hand.
+Create a new file in `apps/` directory:
 
-I would like to add more input types in the future.
+```python
+from slime.app import App
+from lib.keycode import Keycode
 
-### Expansion Port
+class MyApp(App):
+    name = "My App"
+    id = "my_app"
+    
+    def run(self):
+        while True:
+            self.sys.clear((0, 0, 0))
+            self.sys.draw_text("Hello!", 10, 10)
+            self.sys.update()
+            
+            if self.sys.key_pressed(Keycode.Q):
+                return  # Exit to launcher
+            
+            yield  # Return control to OS
+```
 
-The expansion port used on the Slimedeck is the [5-pin Dk925A-10M](https://cdn.shopify.com/s/files/1/0174/1800/files/DK925A-10M.pdf?v=1643016288) which, as far as I can tell, are only [sold via Pimoroni](https://collabs.shop/knlijz).
+The launcher will automatically discover and display your app!
 
-The pinout used for an expansion read left to right, with the edge connector facing you is...
+## Hardware Support
 
-> 5V - SDA/TX/CPU:GP0 - SCL/RX/CPU:GP1 - CTRL/GPU:GP29 - GND
+Currently supported:
+- **Pico Calc**: Raspberry Pi Pico with 320x320 ST7789 display and I2C keyboard
 
-A 4.7k resistor should be placed on the PicoVision connecting the GPU's GP29 to GND while the expansion side should place a 4.7k resistor between CTRL (GP29) and 5v.
+## Documentation
 
-Although the plan is to eventually support various resistor values for different protocols / speeds, due to a design mistake this is not currently reliable. The PicoVision only has one ADC pin exposed (GPU:GP29) which is used as CTRL, however to reliably determine the value of the expansion resistor we also need a second ADC to act as a VREF (voltage reference) so we can determine the true voltage of our 5v line. As it stands if the 5v line is 5.2v or 4.9v due to load it may shift the value of our expansion voltage divider out of the expected range and the expansion may be incorrectly recognized. This is easily remidied with an external i2c ADC, but it is not currently implemented.
-
-## License
-
-This software is licensed as MIT.
-
-App icons are from [PiiiXL on Itch.io](https://piiixl.itch.io/mega-1-bit-icons-bundle) and are licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.en)
+See `dev/` directory for detailed documentation:
+- `dev/DESIGN.md` - Architecture and design decisions
+- `dev/DEPLOY_TO_HARDWARE.md` - Hardware deployment guide
+- `dev/TESTING.md` - Testing procedures
