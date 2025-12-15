@@ -4,6 +4,10 @@ A lightweight operating system for embedded MicroPython devices.
 
 This project started from [Slime OS](https://github.com/abeisgoat/slime_os) but has been re-written to be easier to extend and modify.
 
+This has an abstraction layer to help it to be extensible to other hardware platforms however currently only 2 abstractions are present:
+* [PicoCalc hardware](https://www.clockworkpi.com/picocalc) with a [Pico Plus 2W](https://shop.pimoroni.com/products/pimoroni-pico-plus-2-w?variant=42182811942995)
+* Pygame simulator
+
 ## Directory Structure
 
 ```
@@ -56,7 +60,7 @@ slime_os_2/
 python3 dev/run_simulator.py
 ```
 
-[screenshot of home page](screenshot.png)
+<img src="screenshot.png" alt="screenshot of home page" width="400px">
 
 Requires pygame: `pip3 install pygame`
 
