@@ -1,7 +1,7 @@
 # Slime OS 2
 <img src="screenshots/launcher.png" alt="screenshot of home page" width="400px">
 
-A lightweight operating system for embedded MicroPython devices.
+A simple app-launcher and OS (kinda) for the PicoCalc and other MicroPython devices.
 
 This project started from [Slime OS](https://github.com/abeisgoat/slime_os) but has been re-written to be easier to extend and modify.
 
